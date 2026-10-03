@@ -18,7 +18,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 
 /**
@@ -28,7 +27,8 @@ import org.springframework.security.web.savedrequest.NullRequestCache;
  *   <li>Login is a custom JSON endpoint (identity.AuthService); formLogin/httpBasic/logout are disabled.</li>
  *   <li>CSRF: cookie token repository ({@code XSRF-TOKEN}, readable by JS) + {@code X-XSRF-TOKEN} header, the
  *       configuration Spring Security documents for SPAs. We use the plain (non-XOR) handler: the token is
- *       only ever sent in a header, so BREACH-style masking of a form field is not needed.</li>
+ *       only ever sent in a header (HeaderOnlyCsrfTokenRequestHandler: the {@code _csrf} parameter is NOT read), so
+ *       BREACH-style masking of a form field is not needed.</li>
  *   <li>The SecurityContext lives in the HTTP session, which Spring Session persists in Postgres.</li>
  * </ul>
  */
@@ -60,7 +60,7 @@ public class SecurityConfig {
                 })
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
-                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+                        .csrfTokenRequestHandler(new HeaderOnlyCsrfTokenRequestHandler()))
                 .securityContext(sc -> sc.securityContextRepository(securityContextRepository))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)

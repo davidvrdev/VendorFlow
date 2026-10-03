@@ -69,7 +69,7 @@ logging:
 
 app:
   security:
-    # Cost factor of the {bcrypt} encoder (docs/SECURITY.md). Lowered only in the test profile for speed.
+    # Cost factor of the {bcrypt} encoder (docs/SECURITY.md). Lowered only in the test and e2e profiles for speed.
     bcrypt-strength: 12
     # Secure flag of the VF_SESSION cookie. Fails SAFE: true by default; only local/test/e2e profiles set false.
     session-cookie-secure: true
@@ -93,9 +93,13 @@ app:
       resend-verification: 3
       # POST /api/v1/vendors/{id}/documents (multipart upload)
       document-upload: 30
+      # same endpoint, per authenticated user id (checked in DocumentUploadService)
+      document-upload-user: 30
   documents:
     # Max size of one uploaded document (our own check, before the multipart limits above).
     max-size: 15MB
+    # Total stored bytes per organization, all document states (413 "Storage quota exceeded").
+    org-quota: 5GB
   storage:
     # Only "filesystem" exists today; an S3-compatible provider comes before Phase 11 (ADR-0007).
     provider: ${STORAGE_PROVIDER:filesystem}

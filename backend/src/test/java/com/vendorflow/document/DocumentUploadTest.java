@@ -447,8 +447,8 @@ class DocumentUploadTest extends DocumentTestBase {
         // The variable path segment does not escape the rule: another vendor id shares the same budget...
         client.postMultipart(VENDORS + "/00000000-0000-0000-0000-000000000000/documents", null, Map.of())
                 .andExpect(status().isTooManyRequests());
-        // ...a different IP has its own budget, and other endpoints are not limited by this rule.
-        member.client().remoteAddr("203.0.113.78").postMultipart(VENDORS + "/" + vendor + "/documents", null, Map.of())
+        // ...a different IP (and user: the member also has a per-user budget) has its own budget, and other endpoints are not limited by this rule.
+        admin.client().remoteAddr("203.0.113.78").postMultipart(VENDORS + "/" + vendor + "/documents", null, Map.of())
                 .andExpect(status().isBadRequest());
         client.get(VENDORS + "/" + vendor + "/documents").andExpect(status().isOk());
     }

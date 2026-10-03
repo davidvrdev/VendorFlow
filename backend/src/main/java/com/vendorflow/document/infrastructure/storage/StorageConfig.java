@@ -1,6 +1,5 @@
 package com.vendorflow.document.infrastructure.storage;
 
-import java.io.InputStream;
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -24,6 +23,6 @@ public class StorageConfig {
     @Bean
     @ConditionalOnMissingBean(FileScanner.class)
     FileScanner noOpFileScanner() {
-        return (InputStream content, String detectedMimeType) -> FileScanner.Result.ok();
+        return new NoOpFileScanner();
     }
 }

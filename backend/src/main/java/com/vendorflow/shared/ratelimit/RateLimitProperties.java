@@ -22,7 +22,8 @@ public class RateLimitProperties {
             "password-reset-request", 5,
             "invitation", 20,
             "resend-verification", 3,
-            "document-upload", 30));
+            "document-upload", 30,
+            "document-upload-user", 30));
 
     public boolean isEnabled() {
         return enabled;

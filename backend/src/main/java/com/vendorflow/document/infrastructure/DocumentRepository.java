@@ -40,6 +40,10 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
             """)
     Optional<DocumentRow> findRow(@Param("id") UUID id, @Param("organizationId") UUID organizationId);
 
+    /** Bytes stored by the organization, every state (SUPERSEDED/ARCHIVED files still occupy storage). */
+    @Query("select coalesce(sum(d.sizeBytes), 0) from Document d where d.organizationId = :organizationId")
+    long totalSizeBytes(@Param("organizationId") UUID organizationId);
+
     /** Ordered by type sortOrder, then newest upload first. The Pageable only bounds the number of rows. */
     @Query("""
             select new com.vendorflow.document.infrastructure.DocumentRow(d, t)

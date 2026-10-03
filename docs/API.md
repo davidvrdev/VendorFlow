@@ -288,6 +288,9 @@ Rules:
 - Upload validation, in this order (cheap first):
   1. multipart part `file` present and non-empty → else 400 field `file`.
   2. size ≤ 15 MB (configurable `app.documents.max-size`) → else **413**.
+     Organization storage quota (`app.documents.org-quota`, default 5 GB, counts every document state) → else **413**
+     problem `title: "Storage quota exceeded"`, type `.../storage-quota-exceeded` (checked again with the streamed
+     byte count inside the transaction).
   3. extension of the sanitized original filename ∈ {pdf, png, jpg, jpeg} → else **415**.
   4. magic bytes match the extension family (PDF `%PDF-`; PNG `89 50 4E 47 0D 0A 1A 0A`; JPEG `FF D8 FF`) → else **415**.
      Client `Content-Type` is ignored; stored `mime_type` is the detected one.
@@ -306,7 +309,7 @@ Rules:
 - Download: authorization → audit `document.downloaded` → stream with `Content-Type` = stored mime,
   `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<encoded>`,
   `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `Content-Security-Policy: sandbox`.
-- Rate limit: uploads 30/min per client IP.
+- Rate limit: uploads 30/min per client IP AND 30/min per authenticated user (**429** problem + `Retry-After`).
 - Audit: `document.uploaded` (metadata includes `vendorId`, type code, filename, size), `document.superseded`,
   `document.reviewed` (decision, note), `document.dates_changed` (before/after), `document.archived`,
   `document.downloaded`; `document_type.created/updated`. Vendor history includes events whose
@@ -327,6 +330,7 @@ Rules:
 - PATCH body is read as a raw JSON object: absent key = unchanged, `null` clears; empty body/no change = 200, no audit. 409 check precedes validation. Non-string date -> 400.
 - Review: `note` optional for APPROVED (stored); `decision` other than APPROVED/REJECTED -> 400. Re-review of a CURRENT document is allowed.
 - Archive returns 200 `DocumentSummary`; already archived = no-op 200.
+- Only `GET` is served on download; `HEAD` -> 405 (`Allow: GET`), no audit row. CSRF token is read from `X-XSRF-TOKEN` only (a `_csrf` form field is ignored: 403).
 - Download works for CURRENT/SUPERSEDED/ARCHIVED; missing stored object -> 404 problem (no audit, ERROR log). No Range support.
 - `GET /document-types` default shape is unchanged (no `active`); `includeInactive=true` returns `DocumentTypeAdmin[]` (403 without REQUIREMENTS_MANAGE). POST: name 1-100, unique per org case-insensitive incl. inactive and defaults -> 409 "Document type already exists"; `code` = `CUSTOM_<SLUG>[_XXXX]`, `sortOrder` = max+10, `active` true (all server-decided). PATCH: all fields optional, `code` immutable.
 - `VendorDetail.requirements[i].currentDocument` (null if none) and `otherDocuments` added. `HistoryEvent` gains additive `detail: string | null` ("<type name> - <filename>" for document events). Document events in history: `document.uploaded|superseded|reviewed|dates_changed|archived|downloaded`; `reviewed` -> `changes.reviewStatus`, `archived` -> `changes.state`, `dates_changed` -> `changes.issueDate/expirationDate`.

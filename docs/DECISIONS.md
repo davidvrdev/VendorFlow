@@ -41,6 +41,13 @@ Major decisions get an ADR in `docs/adr/`. Small decisions are logged here, one 
 | 2026-10-03 | Document history = superseded chain + audit events (no separate `document_version` table) | One concept fewer; "new upload supersedes" matches how COIs renew; nothing is overwritten |
 | 2026-10-03 | Document types seeded per organization | Each org can rename/deactivate types without global coupling |
 | 2026-10-03 | Daily digest email instead of one email per document | Avoid inbox noise; "every alert implies an action" |
+| 2026-10-03 | Storage quota per organization, default 5 GB, sums ALL states; pre-check with declared size + authoritative re-check with the streamed count inside the upload transaction; not serialized per org (overshoot <= concurrent uploads x 15 MB) | Superseded/archived files still occupy storage; serializing per org would need an org-level lock on every upload for a bounded, small overshoot |
+| 2026-10-03 | Per-user upload limit (30/min) checked in `DocumentUploadService` via `RateLimiter`, `ApiException` carries optional Retry-After | The user id is only known after authentication; keeps one limiter implementation and the global 429 problem shape |
+| 2026-10-03 | CSRF token resolved from the header only (`HeaderOnlyCsrfTokenRequestHandler`) | The `_csrf` parameter fallback makes Tomcat parse/spool multipart bodies before CSRF can reject; all clients already send the header |
+| 2026-10-03 | `HEAD /documents/{id}/download` -> 405 in the controller | Spring maps HEAD to the GET handler; it would audit a download that served no file |
+| 2026-10-03 | No-op `FileScanner` is a named class; prod + no-op logs one WARN at startup (does not fail) | Visible in prod logs without blocking staging/early deployments; failing startup would block the MVP before the scanner exists |
+| 2026-10-03 | Uploads to INACTIVE vendors allowed; changing a type's `hasExpiration` keeps existing dates (Phase 4 compliance interprets them) | Keeps records complete and avoids destructive data changes on a config toggle |
+| 2026-10-03 | Ingress must cap bodies (16 MB only on the upload route, ~1 MB elsewhere), timeouts, per-IP connections (DEPLOYMENT.md) | The app cannot stop slow/oversized requests before accepting them; Next `proxyClientMaxBodySize` is global |
 | 2026-10-03 | Org becomes read-only (not locked out) when subscription inactive | Never hold customer data hostage; reduces churn friction |
 | 2026-10-03 | Foreign/nonexistent resource → 404 (not 403) | Avoid leaking existence across tenants |
 | 2026-10-03 | No global client-side cache lib (TanStack Query) for now | Server Components + `router.refresh()` suffice; add when a real need appears |

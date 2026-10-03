@@ -14,6 +14,21 @@ public class DocumentProperties {
 
     private DataSize maxSize = DataSize.ofMegabytes(15);
 
+    /** Total stored bytes per organization (all document states: superseded/archived files are still stored). */
+    private DataSize orgQuota = DataSize.ofGigabytes(5);
+
+    public DataSize getOrgQuota() {
+        return orgQuota;
+    }
+
+    public void setOrgQuota(DataSize orgQuota) {
+        this.orgQuota = orgQuota;
+    }
+
+    public long orgQuotaBytes() {
+        return orgQuota.toBytes();
+    }
+
     public DataSize getMaxSize() {
         return maxSize;
     }

@@ -73,7 +73,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Object> handleApi(ApiException ex, WebRequest request) {
         ProblemDetail pd = Problems.of(ex.status(), ex.slug(), ex.title(), ex.getMessage());
-        return handleExceptionInternal(ex, pd, new HttpHeaders(), ex.status(), request);
+        HttpHeaders headers = new HttpHeaders();
+        if (ex.retryAfterSeconds() != null) {
+            headers.set(HttpHeaders.RETRY_AFTER, Long.toString(ex.retryAfterSeconds()));
+        }
+        return handleExceptionInternal(ex, pd, headers, ex.status(), request);
     }
 
     @ExceptionHandler(RequestValidationException.class)

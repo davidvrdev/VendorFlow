@@ -1,7 +1,10 @@
 # Full-stack Playwright runs only (SPRING_PROFILES_ACTIVE=local,e2e). Never combine with prod (ProfileGuard).
 app:
   security:
+    # E2E creates many accounts in parallel; cost 12 costs ~1 s of CPU per login with spring-boot:run (C1 JIT only)
+    # and made the suite time out. Same as the test profile. e2e can never run with prod (ProfileGuard).
     session-cookie-secure: false # plain http
+    bcrypt-strength: 4
   outbox:
     dispatcher:
       # Emails reach the in-memory mailbox within about a second instead of 15 s.
@@ -14,3 +17,5 @@ app:
       password-reset-request: 10000
       invitation: 10000
       resend-verification: 10000
+      document-upload: 10000
+      document-upload-user: 10000

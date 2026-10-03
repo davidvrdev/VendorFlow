@@ -16,6 +16,7 @@ import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.FieldViolation;
 import com.vendorflow.shared.error.RequestValidationException;
+import com.vendorflow.shared.ratelimit.RateLimiter;
 import com.vendorflow.vendor.application.VendorService;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -60,6 +61,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentUploadService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentUploadService.class);
+    static final String USER_RATE_RULE = "document-upload-user";
     private static final String CURRENT_UNIQUE_INDEX = "document_current_uq";
 
     private final AuthorizationService authorization;
@@ -72,12 +74,13 @@ public class DocumentUploadService {
     private final AuditService audit;
     private final DocumentProperties properties;
     private final Clock clock;
+    private final RateLimiter rateLimiter;
     private final TransactionTemplate tx;
 
     public DocumentUploadService(AuthorizationService authorization, VendorService vendors,
             DocumentTypeRepository types, DocumentRepository documents, DocumentReadService reads,
             ObjectStorage storage, FileScanner scanner, AuditService audit, DocumentProperties properties,
-            Clock clock, PlatformTransactionManager transactionManager) {
+            Clock clock, RateLimiter rateLimiter, PlatformTransactionManager transactionManager) {
         this.authorization = authorization;
         this.vendors = vendors;
         this.types = types;
@@ -88,6 +91,7 @@ public class DocumentUploadService {
         this.audit = audit;
         this.properties = properties;
         this.clock = clock;
+        this.rateLimiter = rateLimiter;
         this.tx = new TransactionTemplate(transactionManager);
     }
 
@@ -96,6 +100,14 @@ public class DocumentUploadService {
             String expirationDateText) {
         TenantContext.Tenant tenant = authorization.require(Permission.CONTENT_WRITE);
         UUID orgId = tenant.organizationId();
+        // Per-USER budget (the per-IP rule in RateLimitFilter cannot see the user): shared NATs do not starve each
+        // other and one user rotating IPs is still limited. Counted before any other work.
+        RateLimiter.Decision decision = rateLimiter.tryAcquire(USER_RATE_RULE, tenant.userId().toString());
+        if (!decision.allowed()) {
+            log.warn("Rate limit exceeded: rule={}", USER_RATE_RULE);
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "rate-limited", "Too many requests",
+                    "Too many requests. Please try again later.", decision.retryAfterSeconds());
+        }
         vendors.requireExists(orgId, vendorId);
 
         // 1. present and non-empty
@@ -125,6 +137,10 @@ public class DocumentUploadService {
         DocumentDates.validate(issue, expiration, type.isHasExpiration(), errors);
         if (!errors.isEmpty()) {
             throw new RequestValidationException(errors);
+        }
+        // 7. storage quota, fast pre-check with the declared size (authoritative re-check in persist())
+        if (documents.totalSizeBytes(orgId) + file.getSize() > properties.orgQuotaBytes()) {
+            throw quotaExceeded();
         }
         scan(file, kind);
 
@@ -207,6 +223,12 @@ public class DocumentUploadService {
         UUID orgId = tenant.organizationId();
         Instant now = clock.instant();
         vendors.requireExistsAndLock(orgId, vendorId);
+        // Authoritative quota check with the streamed byte count; the transaction rolls back and upload() deletes
+        // the stored object. Concurrent uploads to DIFFERENT vendors of one org are not serialized (the lock is per
+        // vendor), so the quota can be overshot by at most (concurrent uploads x max-size); accepted, see SECURITY.md.
+        if (documents.totalSizeBytes(orgId) + stored.sizeBytes() > properties.orgQuotaBytes()) {
+            throw quotaExceeded();
+        }
 
         Optional<Document> previous = documents.findCurrentForUpdate(orgId, vendorId, type.getId(),
                 DocumentState.CURRENT);
@@ -268,6 +290,11 @@ public class DocumentUploadService {
     private static ApiException tooLarge(long maxBytes) {
         return new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "file-too-large", "File too large",
                 "The file exceeds the maximum size of " + (maxBytes / (1024 * 1024)) + " MB.");
+    }
+
+    private static ApiException quotaExceeded() {
+        return new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "storage-quota-exceeded", "Storage quota exceeded",
+                "Your organization has reached its document storage quota.");
     }
 
     private static ApiException unsupported(String detail) {

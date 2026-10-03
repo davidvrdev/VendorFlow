@@ -4,6 +4,7 @@ import com.vendorflow.document.application.ContentDispositions;
 import com.vendorflow.document.application.DocumentDownloadService;
 import com.vendorflow.document.application.DocumentService;
 import com.vendorflow.document.application.DocumentUploadService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.io.IOException;
@@ -14,6 +15,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -93,7 +95,15 @@ public class DocumentController {
      * Written straight to the response (no converters, no Range handling) so nothing is buffered in memory.
      */
     @GetMapping("/documents/{id}/download")
-    public void download(@PathVariable UUID id, HttpServletResponse response) throws IOException {
+    public void download(@PathVariable UUID id, HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        // Spring MVC maps HEAD to every GET handler. A HEAD would pass authorization and WRITE a "downloaded" audit
+        // row without sending a byte, so audit would not mean "file was served": refuse it before the service runs.
+        if (HttpMethod.HEAD.matches(request.getMethod())) {
+            response.setHeader(HttpHeaders.ALLOW, "GET");
+            response.sendError(HttpStatus.METHOD_NOT_ALLOWED.value());
+            return;
+        }
         DocumentDownloadService.Download download = downloads.open(id);
         try (InputStream in = download.stream()) {
             response.setStatus(HttpStatus.OK.value());
