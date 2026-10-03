@@ -47,18 +47,18 @@ export function invitableRoles(actor: Role | null | undefined): Exclude<Role, "O
 }
 
 /**
- * Roles an actor can pick when changing a member's role. ADMIN never sees OWNER. Assumption (not
- * explicit in API.md): ADMIN may assign ADMIN; the backend rejects it if not and we show its message.
+ * Roles an actor can pick when changing a member's role (docs/API.md § Members): OWNER may assign any
+ * role; ADMIN may only assign MEMBER or VIEWER.
  */
 export function assignableRoles(actor: Role | null | undefined): Role[] {
   if (!can(actor, "MEMBERS_MANAGE")) return [];
-  return can(actor, "OWNER_GRANT") ? ["OWNER", "ADMIN", "MEMBER", "VIEWER"] : ["ADMIN", "MEMBER", "VIEWER"];
+  return actor === "OWNER" ? ["OWNER", "ADMIN", "MEMBER", "VIEWER"] : ["MEMBER", "VIEWER"];
 }
 
-/** Whether the actor may change/remove another member's row. ADMIN cannot touch OWNER rows. */
+/** Whether the actor may change/remove another member's row. ADMIN may only manage MEMBER/VIEWER rows. */
 export function canManageMemberRow(actor: Role | null | undefined, target: Role): boolean {
   if (!can(actor, "MEMBERS_MANAGE")) return false;
-  return target !== "OWNER" || actor === "OWNER";
+  return actor === "OWNER" || target === "MEMBER" || target === "VIEWER";
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

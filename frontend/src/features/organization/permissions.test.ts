@@ -40,11 +40,15 @@ describe("role pickers", () => {
   it("ADMIN never sees OWNER when changing roles", () => {
     expect(assignableRoles("OWNER")).toContain("OWNER");
     expect(assignableRoles("ADMIN")).not.toContain("OWNER");
+    expect(assignableRoles("ADMIN")).toEqual(["MEMBER", "VIEWER"]);
     expect(assignableRoles("MEMBER")).toEqual([]);
   });
   it("ADMIN cannot manage OWNER rows", () => {
     expect(canManageMemberRow("ADMIN", "OWNER")).toBe(false);
     expect(canManageMemberRow("ADMIN", "MEMBER")).toBe(true);
+    expect(canManageMemberRow("ADMIN", "VIEWER")).toBe(true);
+    expect(canManageMemberRow("ADMIN", "ADMIN")).toBe(false);
+    expect(canManageMemberRow("OWNER", "ADMIN")).toBe(true);
     expect(canManageMemberRow("OWNER", "OWNER")).toBe(true);
     expect(canManageMemberRow("MEMBER", "VIEWER")).toBe(false);
   });
