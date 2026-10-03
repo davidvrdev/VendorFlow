@@ -3,16 +3,18 @@
 _Last updated: 2026-10-03 (session 1)_
 
 ## Current Status
-Phases 0–5 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents, Compliance, Dashboard). Phase 6 (Notifications) **starting**.
+Phases 0–6 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents, Compliance, Dashboard, Notifications).
+**Work paused by the owner after Phase 6 (2026-10-04).** Phase 7 (CSV) not started.
 Users can manage organizations/members, vendors, required document types, and upload/review/archive/download
-vendor documents, see derived compliance per requirement and per vendor, and work from a prioritized dashboard.
+vendor documents, see derived compliance, work from a prioritized dashboard, request documents from vendors by
+email and receive a daily digest (real email delivery pending the owner's Resend key + domain).
 
 ## Current Sprint
-Phase 6 — Notifications. Contract: `docs/API.md` § "Phase 6 contract details" (authoritative).
-Scope: Resend `EmailSender` (HTTP, idempotency key, retry classification; tested against a mock server — real send
-pending the owner's API key + verified domain), expiry reminder ledger job (org time zone, configured offsets,
-idempotent), daily compliance digest to verified OWNER/ADMIN, manual "Request document" email to the vendor contact,
-email activity log for owners/admins; UI for request + activity + reminder settings.
+None — paused after Phase 6 by the owner. Next when resumed: **Phase 7 — CSV import/export** (contract not written
+yet). Planned design: export `GET /vendors/export.csv` (UTF-8 BOM, CSV-injection-safe cells, compliance columns);
+import = upload → server-side preview (per-row CREATE/UPDATE/UNCHANGED/ERROR, stored import job with 1 h expiry) →
+atomic commit with re-validation; OWNER/ADMIN; ≤1 MB / ≤2,000 rows; parser = Apache Commons CSV (decision to log in
+DECISIONS.md when implemented). Ask the owner before resuming.
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
@@ -28,9 +30,11 @@ email activity log for owners/admins; UI for request + activity + reminder setti
   "today", compliance filter/sorts, per-requirement status and days to expiry, next-action-first UI.
 - Phase 5: dashboard summary + prioritized attention list (one shared compliance SQL builder), 500-vendor perf test
   (~100–160 ms), one-click upload/renew/review from the dashboard.
+- Phase 6: Resend sender (HTTP, idempotency, retry classification; mock-tested), idempotent reminder ledger, daily
+  digest, vendor document requests, email activity log; prod refuses the logging provider.
 
 ## In Progress
-- Phase 6 (Notifications).
+- Nothing. Paused after Phase 6 at the owner's request.
 
 ## Blocked
 - Nothing. CI has never run (no git remote) — owner must create the GitHub repo and push.
@@ -65,6 +69,9 @@ email activity log for owners/admins; UI for request + activity + reminder setti
 - `S3ObjectStorage` not implemented yet (ADR-0007) — required before Phase 11. No real malware scanner, no orphan
   object sweeper, no retention policy for superseded/archived files.
 - Storage quota can overshoot by (concurrent uploads × 15 MB) per org (documented).
+- UX: vendor detail repeats "Add the vendor's email to request documents" on every requestable row when the vendor
+  has no email — show one notice on the card instead (Phase 9 UX pass).
+- Real email delivery via Resend never exercised (needs owner key + verified domain); `reminder.notification_id` unused.
 
 ## Decisions Pending
 See `docs/DECISIONS.md` § Pending (hosting, pricing/plan limits, sending domain).
@@ -81,9 +88,9 @@ Phase 2 (vendors) closed; Phase 3 (documents) closed after upload security revie
 See `docs/SESSION_HANDOFF.md`.
 
 ## Verification (last run, 2026-10-03)
-- Backend `./mvnw verify`: **398 tests, 0 failures** (incl. compliance vectors vs Java, list SQL and dashboard SQL; 500-vendor perf test). A full run takes ~25 min on this machine.
-- Frontend: lint ✓, typecheck ✓, **294 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
-- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **17/17** ✓ in one run (incl. dashboard).
+- Backend `./mvnw verify`: **449 tests, 0 failures** (incl. Resend mock tests, 40-day reminder simulation). ~25 min on this machine.
+- Frontend: lint ✓, typecheck ✓, **338 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
+- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **18/18** ✓ (incl. document request + digest).
 
 ## Git
 - Branch `main`, no remote. Phase 3 closing commits: `5f63856 security: fix Phase 3 review findings…`, `3c52019 test(e2e)…` + docs commit.
@@ -92,7 +99,8 @@ See `docs/SESSION_HANDOFF.md`.
 - Machine: Windows 11, Git Bash + PowerShell. JDK 25 only (compile `release=21`, ADR-0009). Maven via `mvnw`.
   Node 24 / npm 11. Docker Desktop 29 (start it before tests). No `psql`, `supabase` CLI, `gh`.
 - Owner decision: own auth with Spring Security + server-side sessions (ADR-0002), not Supabase Auth.
-- **Owner instruction (2026-10-03): chain all MVP phases through Phase 10 without asking between phases**, as long
+- **Owner instruction (2026-10-04): STOP after Phase 6** — do not start Phase 7 until the owner asks. (Earlier,
+  2026-10-03: chain all MVP phases through Phase 10 without asking between phases**, as long
   as each phase passes its quality gates. Stop only for blocking gate failures, business decisions (pricing, plan
   limits) or owner-only inputs (Stripe test keys, Resend key + domain, GitHub remote). Phase 11+ needs the owner.
 - Tokens (verify/reset/invite) travel only in URL fragments (`#token=`) and are POSTed by the page.

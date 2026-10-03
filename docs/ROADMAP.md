@@ -12,7 +12,7 @@ Do not start future phases early. Status: ☐ not started · ◐ in progress · 
 | 3 | Documents | ☑ | Document types; upload with validation (magic bytes, size); storage abstraction; download; supersede; review; history |
 | 4 | Compliance engine | ☑ | `ComplianceCalculator` + SQL aggregates agree (shared test vectors); org time zone; vendor status |
 | 5 | Dashboard | ☑ | Summary counts + prioritized attention list; fast with 500 vendors / 5k docs |
-| 6 | Notifications | ◐ | Resend sender (outbox exists since Phase 1); reminder ledger; daily digest; document request; idempotency tests |
+| 6 | Notifications | ☑ | Resend sender (outbox exists since Phase 1); reminder ledger; daily digest; document request; idempotency tests |
 | 7 | CSV | ☐ | Export; import with full validation preview + atomic commit |
 | 8 | Billing | ☐ | Trial; Checkout; Portal; signed + idempotent webhooks; read-only mode when inactive |
 | 9 | Security hardening | ☐ | CSP & headers; rate limits verified; repository-scope architecture test; dependency scanning; OWASP ASVS L1 pass |

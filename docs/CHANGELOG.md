@@ -30,6 +30,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
 - **Phase 5 — Dashboard**: summary of active, compliant, attention and non-compliant vendors plus missing/expired/
   expiring/to-review documents, and a prioritized "Needs attention" list with one-click upload, renewal and review.
 
+- **Phase 6 — Notifications**: Resend email delivery (pending owner API key + verified domain), automatic expiry
+  reminders at configurable thresholds with a daily digest to owners/admins, "Request from vendor" emails, email
+  activity log.
+
 ### Security
 - Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
   atomic lockout, fail-closed production configuration, control-character rejection in names, per-recipient
