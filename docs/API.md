@@ -178,7 +178,7 @@ Rules:
 
 ### Document types (Phase 2: read · Phase 3: manage)
 - `GET /document-types` → `DocumentType[]` (active types, by `sortOrder`) — Phase 2 **(implemented)**
-- `POST /document-types` · `PATCH /document-types/{id}` — Phase 3
+- `POST /document-types` · `PATCH /document-types/{id}` · `GET /document-types?includeInactive=true` — Phase 3 **(implemented)**
 
 ### Phase 2 contract details (authoritative for backend + frontend)
 ```ts
@@ -245,7 +245,7 @@ Rules:
     `{before, after}` and are not vendor history.
   - `actor` is null when the actor is unknown. Events are newest first (`createdAt desc, id desc`).
 
-### Documents (Phase 3)
+### Documents (Phase 3) **(implemented)**
 - `POST  /vendors/{vendorId}/documents` multipart `{ file, documentTypeId, issueDate?, expirationDate? }` → 201
 - `GET   /vendors/{vendorId}/documents?includeHistory=true`
 - `GET   /documents/{id}` · `PATCH /documents/{id}` `{ issueDate?, expirationDate? }`
@@ -319,6 +319,18 @@ Rules:
   file + move). `S3ObjectStorage` comes before Phase 11 (ADR-0007). `FileScanner` interface with no-op implementation
   called before storing (hook for malware scanning).
 - Next.js rewrite must pass 15 MB multipart bodies (verify Next 16 proxy body limits; configure if needed).
+
+**Implementation notes (Phase 3 backend; differences/additions vs the contract above):**
+- `POST /vendors/{id}/documents`: multipart fields are read as text so the validation order holds; malformed/unknown/foreign/inactive `documentTypeId` -> 400 field `documentTypeId` (same body). Blank dates = absent. 403 (role) and 404 (vendor) come before any file validation. Non-multipart body -> 415. Scanner rejection -> 422 title "File rejected".
+- Container multipart limit is 16 MB/file (17 MB request), above `app.documents.max-size` (15 MB); both give 413 problem+json (`title: "File too large"`).
+- `expirationDate` is accepted (and stored) for types without expiration; it may be cleared there.
+- PATCH body is read as a raw JSON object: absent key = unchanged, `null` clears; empty body/no change = 200, no audit. 409 check precedes validation. Non-string date -> 400.
+- Review: `note` optional for APPROVED (stored); `decision` other than APPROVED/REJECTED -> 400. Re-review of a CURRENT document is allowed.
+- Archive returns 200 `DocumentSummary`; already archived = no-op 200.
+- Download works for CURRENT/SUPERSEDED/ARCHIVED; missing stored object -> 404 problem (no audit, ERROR log). No Range support.
+- `GET /document-types` default shape is unchanged (no `active`); `includeInactive=true` returns `DocumentTypeAdmin[]` (403 without REQUIREMENTS_MANAGE). POST: name 1-100, unique per org case-insensitive incl. inactive and defaults -> 409 "Document type already exists"; `code` = `CUSTOM_<SLUG>[_XXXX]`, `sortOrder` = max+10, `active` true (all server-decided). PATCH: all fields optional, `code` immutable.
+- `VendorDetail.requirements[i].currentDocument` (null if none) and `otherDocuments` added. `HistoryEvent` gains additive `detail: string | null` ("<type name> - <filename>" for document events). Document events in history: `document.uploaded|superseded|reviewed|dates_changed|archived|downloaded`; `reviewed` -> `changes.reviewStatus`, `archived` -> `changes.state`, `dates_changed` -> `changes.issueDate/expirationDate`.
+- Rate limit rule `document-upload` (30/min/IP) matches `POST /api/v1/vendors/{anything}/documents`.
 
 ### Dashboard (Phase 5)
 - `GET /dashboard/summary` → counts

@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -45,6 +46,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             "/api/v1/invitations/accept", "invitation",
             "/api/v1/auth/resend-verification", "resend-verification");
 
+    /** POST paths with a variable segment (normalized, lower case): pattern -> rule name. */
+    private static final Map<Pattern, String> PATTERN_RULES = Map.of(
+            Pattern.compile("/api/v1/vendors/[^/]+/documents"), "document-upload");
+
     private final RateLimiter limiter;
     private final ProblemJsonWriter writer;
 
@@ -56,7 +61,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String rule = HttpMethod.POST.matches(request.getMethod()) ? RULES.get(normalize(request)) : null;
+        String rule = HttpMethod.POST.matches(request.getMethod()) ? ruleFor(normalize(request)) : null;
         if (rule != null) {
             RateLimiter.Decision decision = limiter.tryAcquire(rule, request.getRemoteAddr());
             if (!decision.allowed()) {
@@ -67,6 +72,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
             }
         }
         chain.doFilter(request, response);
+    }
+
+    private static String ruleFor(String path) {
+        String rule = RULES.get(path);
+        if (rule != null) {
+            return rule;
+        }
+        for (Map.Entry<Pattern, String> entry : PATTERN_RULES.entrySet()) {
+            if (entry.getKey().matcher(path).matches()) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     /**

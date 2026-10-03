@@ -21,6 +21,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
@@ -96,6 +98,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<Object> handleAuthentication(AuthenticationException ex, WebRequest request) {
         return handleExceptionInternal(ex, Problems.unauthorized(), new HttpHeaders(), HttpStatus.UNAUTHORIZED,
                 request);
+    }
+
+    /** Container-level multipart limit (slightly above app.documents.max-size): same 413 as our own size check. */
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        ProblemDetail pd = Problems.of(HttpStatus.PAYLOAD_TOO_LARGE, "file-too-large", "File too large",
+                "The upload exceeds the maximum allowed size.");
+        return handleExceptionInternal(ex, pd, headers, HttpStatus.PAYLOAD_TOO_LARGE, request);
+    }
+
+    /** Broken or unreadable multipart body (not a size problem): 400, never the catch-all 500. */
+    @ExceptionHandler(MultipartException.class)
+    ResponseEntity<Object> handleMultipart(MultipartException ex, WebRequest request) {
+        ProblemDetail pd = Problems.of(HttpStatus.BAD_REQUEST, "invalid-upload", "Invalid upload",
+                "The upload request could not be read.");
+        return handleExceptionInternal(ex, pd, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
     }
 
     @ExceptionHandler(Exception.class)

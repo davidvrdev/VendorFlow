@@ -56,6 +56,17 @@ public class DocumentType extends UuidEntity {
         this.updatedAt = now;
     }
 
+    /** Applies the editable fields (code is immutable: other features and reminders refer to it). */
+    public void edit(String name, boolean hasExpiration, boolean requiredByDefault, boolean active, int sortOrder,
+            Instant now) {
+        this.name = name;
+        this.hasExpiration = hasExpiration;
+        this.requiredByDefault = requiredByDefault;
+        this.active = active;
+        this.sortOrder = sortOrder;
+        this.updatedAt = now;
+    }
+
     public UUID getOrganizationId() {
         return organizationId;
     }

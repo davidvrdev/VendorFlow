@@ -213,3 +213,6 @@ metadata jsonb (before/after for changed fields; no secrets, no document content
 - `vendor.created_by_user_id` is `ON DELETE SET NULL` (like `invitation.invited_by_user_id`); the composite FKs of
   `vendor_requirement` are `ON DELETE RESTRICT`.
 - CHECKs mirror the API limits (company_name 1..200, contact_name 120, email 254, phone 40, category 60, notes 5000).
+
+### Phase 3 migration (V5__documents.sql)
+Creates `document` as specified above plus: `size_bytes>0`, `issue_date<=expiration_date`, mime allowlist and `sha256` length CHECKs; `superseded_by` composite self-FK is DEFERRABLE INITIALLY DEFERRED (old row is updated before the new one is inserted); indexes `document_current_uq` (partial unique), `document_org_expiration_idx`, `document_org_vendor_idx`, `document_org_type_idx`; `document_type_org_name_lower_uq` (unique `(organization_id, lower(name))`); `audit_event_document_vendor_idx` on `(organization_id, jsonb_extract_path_text(metadata,'vendorId'), created_at DESC) WHERE entity_type='document'` for vendor history over document events.

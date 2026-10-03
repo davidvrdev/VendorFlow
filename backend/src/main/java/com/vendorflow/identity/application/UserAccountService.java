@@ -4,6 +4,9 @@ import com.vendorflow.identity.domain.AppUser;
 import com.vendorflow.identity.infrastructure.AppUserRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -44,6 +47,17 @@ public class UserAccountService {
     public UserSummary require(UUID userId) {
         return users.findById(userId).map(UserAccountService::summary)
                 .orElseThrow(() -> new BadCredentialsException("Unknown user"));
+    }
+
+    /** Display names of the given users in ONE query (unknown ids are absent from the map). */
+    @Transactional(readOnly = true)
+    public Map<UUID, String> fullNames(Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> names = new HashMap<>();
+        users.findAllById(userIds).forEach(u -> names.put(u.getId(), u.getFullName()));
+        return names;
     }
 
     /**

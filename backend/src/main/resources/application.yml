@@ -26,8 +26,10 @@ spring:
       enabled: true
   servlet:
     multipart:
-      max-file-size: 15MB
-      max-request-size: 16MB
+      # Slightly ABOVE app.documents.max-size (15MB): a file just over our limit must reach our own check, which gives
+      # the clear 413; the container limit only stops far larger bodies (also a 413, see GlobalExceptionHandler).
+      max-file-size: 16MB
+      max-request-size: 17MB
 
 server:
   port: 8080
@@ -35,6 +37,9 @@ server:
   # is a trusted proxy. "framework" (ForwardedHeaderFilter) trusts the client-controlled leftmost entry. All profiles.
   forward-headers-strategy: native
   tomcat:
+    # Lets Tomcat swallow (read and discard) an oversized upload body so the client receives the 413 instead of a
+    # connection reset. Bounded: larger bodies still get the connection closed.
+    max-swallow-size: 32MB
     remoteip:
       # Peers allowed to set X-Forwarded-For/-Proto: loopback + private ranges by default (same as Tomcat's default).
       # Override with a regex via TRUSTED_PROXIES_REGEX (docs/SECURITY.md section 9). \d+ instead of \d{1,3} keeps
@@ -86,3 +91,14 @@ app:
       password-reset-request: 5
       invitation: 20
       resend-verification: 3
+      # POST /api/v1/vendors/{id}/documents (multipart upload)
+      document-upload: 30
+  documents:
+    # Max size of one uploaded document (our own check, before the multipart limits above).
+    max-size: 15MB
+  storage:
+    # Only "filesystem" exists today; an S3-compatible provider comes before Phase 11 (ADR-0007).
+    provider: ${STORAGE_PROVIDER:filesystem}
+    filesystem:
+      # Relative paths resolve against the working directory (backend/ locally; gitignored as backend/storage-data/).
+      root: ${STORAGE_FILESYSTEM_ROOT:./storage-data}

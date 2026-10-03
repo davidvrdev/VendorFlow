@@ -111,3 +111,6 @@ Rate limiting and the audit `ip_hash` use `request.getRemoteAddr()`. The app run
 
 ## 10. Reporting
 Security issues: contact the owner privately; do not open public issues.
+
+## Upload controls (implemented, Phase 3)
+Order: authz -> vendor in tenant (404) -> non-empty -> size (declared + streamed byte count, 15 MB) -> extension allowlist on the sanitized name -> magic bytes (client Content-Type ignored, mime detected) -> active org type -> dates -> `FileScanner` hook (422) -> streamed write (SHA-256 computed on the way) -> one DB transaction (vendor row lock, supersede, audit); object deleted if the transaction fails. Storage keys are `org/{uuid}/doc/{uuid}` validated against `[a-z0-9-]` segments and re-checked against the root after normalize. Filenames are display-only (last segment, control/bidi stripped, <=255). Downloads: authorize -> audit -> stream with attachment, nosniff, `Cache-Control: private, no-store`, `CSP: sandbox`, RFC 5987 filename. Uploads rate-limited 30/min/IP. Not done: real malware scanner, S3 storage.

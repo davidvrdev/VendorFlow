@@ -6,9 +6,11 @@ import java.util.Map;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -86,6 +88,27 @@ public class ApiClient {
     /** Unsafe request WITHOUT the CSRF header (to prove it is rejected). */
     public ResultActions postWithoutCsrf(String path, Object body) throws Exception {
         return perform(HttpMethod.POST, path, body, false);
+    }
+
+    /** multipart/form-data POST (document upload): text parts from {@code fields}, then the file part (if not null). */
+    public ResultActions postMultipart(String path, MockMultipartFile file, Map<String, String> fields)
+            throws Exception {
+        MockMultipartHttpServletRequestBuilder builder = MockMvcRequestBuilders.multipart(HttpMethod.POST, path);
+        builder.with(request -> {
+            request.setRemoteAddr(remoteAddr);
+            return request;
+        });
+        if (file != null) {
+            builder.file(file);
+        }
+        fields.forEach(builder::param);
+        cookies.forEach((name, value) -> builder.cookie(new Cookie(name, value)));
+        if (cookies.containsKey(CSRF_COOKIE)) {
+            builder.header(CSRF_HEADER, cookies.get(CSRF_COOKIE));
+        }
+        ResultActions actions = mvc.perform(builder);
+        absorbCookies(actions.andReturn().getResponse());
+        return actions;
     }
 
     public ResultActions perform(HttpMethod method, String path, Object body, boolean csrfHeader) throws Exception {

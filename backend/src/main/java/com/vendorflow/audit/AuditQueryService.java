@@ -24,4 +24,13 @@ public class AuditQueryService {
     public Page<AuditEntry> forEntity(UUID organizationId, String entityType, UUID entityId, Pageable pageable) {
         return repository.findEntries(organizationId, entityType, entityId, pageable);
     }
+
+    /**
+     * Events of a vendor AND of its documents (those carry {@code metadata.vendorId}), newest first. Same caller
+     * contract as {@link #forEntity}: authorize the vendor read first.
+     */
+    @Transactional(readOnly = true)
+    public Page<AuditEntry> forVendorTimeline(UUID organizationId, UUID vendorId, Pageable pageable) {
+        return repository.findVendorTimeline(organizationId, vendorId, vendorId.toString(), pageable);
+    }
 }

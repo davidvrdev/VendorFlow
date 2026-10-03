@@ -1,7 +1,9 @@
 package com.vendorflow.vendor.application;
 
 import com.vendorflow.audit.AuditService;
+import com.vendorflow.document.api.DocumentSummary;
 import com.vendorflow.document.api.DocumentTypeView;
+import com.vendorflow.document.application.DocumentReadService;
 import com.vendorflow.document.application.DocumentTypeService;
 import com.vendorflow.identity.application.UserAccountService;
 import com.vendorflow.organization.application.AuthorizationService;
@@ -28,6 +30,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +42,7 @@ import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -56,18 +60,21 @@ public class VendorService {
     private final VendorRequirementRepository requirements;
     private final VendorSearchRepository search;
     private final DocumentTypeService documentTypes;
+    private final DocumentReadService documentReads;
     private final UserAccountService users;
     private final AuthorizationService authorization;
     private final AuditService audit;
     private final Clock clock;
 
     public VendorService(VendorRepository vendors, VendorRequirementRepository requirements,
-            VendorSearchRepository search, DocumentTypeService documentTypes, UserAccountService users,
+            VendorSearchRepository search, DocumentTypeService documentTypes, DocumentReadService documentReads,
+            UserAccountService users,
             AuthorizationService authorization, AuditService audit, Clock clock) {
         this.vendors = vendors;
         this.requirements = requirements;
         this.search = search;
         this.documentTypes = documentTypes;
+        this.documentReads = documentReads;
         this.users = users;
         this.authorization = authorization;
         this.audit = audit;
@@ -272,14 +279,41 @@ public class VendorService {
         UUID orgId = v.getOrganizationId();
         List<UUID> typeIds = requirements.findByOrganizationIdAndVendorId(orgId, v.getId()).stream()
                 .map(VendorRequirement::getDocumentTypeId).toList();
+        // ONE query for all CURRENT documents of the vendor (at most one per type), then matched in memory.
+        Map<UUID, DocumentSummary> currentByType = new LinkedHashMap<>();
+        for (DocumentSummary doc : documentReads.findByVendor(orgId, v.getId(), false)) {
+            currentByType.put(doc.documentType().id(), doc);
+        }
         List<VendorDetail.Requirement> reqs = documentTypes.findByIds(orgId, typeIds).stream()
                 .sorted(Comparator.comparingInt(DocumentTypeView::sortOrder).thenComparing(DocumentTypeView::name))
-                .map(t -> new VendorDetail.Requirement(t.id(), t.code(), t.name(), t.hasExpiration())).toList();
+                .map(t -> new VendorDetail.Requirement(t.id(), t.code(), t.name(), t.hasExpiration(),
+                        currentByType.get(t.id())))
+                .toList();
+        Set<UUID> requiredTypeIds = new HashSet<>(typeIds);
+        List<DocumentSummary> others = currentByType.values().stream()
+                .filter(doc -> !requiredTypeIds.contains(doc.documentType().id())).toList();
         VendorDetail.CreatedBy createdBy = v.getCreatedByUserId() == null ? null
                 : new VendorDetail.CreatedBy(users.require(v.getCreatedByUserId()).fullName());
         return new VendorDetail(v.getId(), v.getCompanyName(), v.getContactName(), v.getEmail(), v.getPhone(),
                 v.getCategory(), v.getStatus(), reqs.size(), v.getCreatedAt(), v.getUpdatedAt(), v.getNotes(),
-                createdBy, reqs);
+                createdBy, reqs, others);
+    }
+
+    // ---- used by the document feature (it authorizes the caller itself, then asks us about the vendor) ----
+
+    /** @throws NotFoundException (404) unless the vendor exists in {@code organizationId} */
+    @Transactional(readOnly = true)
+    public void requireExists(UUID organizationId, UUID vendorId) {
+        load(organizationId, vendorId);
+    }
+
+    /**
+     * Locks the vendor row ({@code FOR UPDATE}) inside the caller's transaction: uploads for one vendor run one after
+     * the other, so "supersede the CURRENT document" cannot race with another upload.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireExistsAndLock(UUID organizationId, UUID vendorId) {
+        vendors.findForUpdate(vendorId, organizationId).orElseThrow(VendorService::notFound);
     }
 
     private static void diff(Map<String, Object> changes, String field, String before, String after) {

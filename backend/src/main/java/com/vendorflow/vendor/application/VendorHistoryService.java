@@ -11,7 +11,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Vendor timeline built from audit events (Phase 3 adds the vendor documents events). */
+/** Vendor timeline built from audit events: the vendor's own and those of its documents (metadata.vendorId). */
 @Service
 public class VendorHistoryService {
 
@@ -26,14 +26,29 @@ public class VendorHistoryService {
     @Transactional(readOnly = true)
     public PageResponse<HistoryEvent> history(UUID vendorId, int page, int size) {
         UUID organizationId = vendors.requireViewable(vendorId);
-        return PageResponse.of(auditQuery.forEntity(organizationId, VendorService.ENTITY_TYPE, vendorId,
+        return PageResponse.of(auditQuery.forVendorTimeline(organizationId, vendorId,
                 PageResponse.pageable(page, size)).map(VendorHistoryService::toEvent));
     }
 
     private static HistoryEvent toEvent(AuditEntry entry) {
         HistoryEvent.Actor actor = entry.actorFullName() == null ? null
                 : new HistoryEvent.Actor(entry.actorFullName());
-        return new HistoryEvent(entry.id(), entry.action(), actor, entry.occurredAt(), changes(entry.metadata()));
+        return new HistoryEvent(entry.id(), entry.action(), actor, entry.occurredAt(), changes(entry.metadata()),
+                detail(entry.metadata()));
+    }
+
+
+    /** "Type name - file name" for document events (their metadata carries documentTypeName and filename). */
+    static String detail(Map<String, Object> metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        Object type = metadata.get("documentTypeName");
+        Object filename = metadata.get("filename");
+        if (type instanceof String t && filename instanceof String f) {
+            return t + " - " + f;
+        }
+        return type instanceof String t ? t : null;
     }
 
     /**
