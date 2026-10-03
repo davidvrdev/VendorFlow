@@ -1,6 +1,9 @@
 app:
   base-url: http://localhost:3000
+  # Testcontainers may run Postgres on a non-local Docker host (remote daemon, DinD in CI): explicit ProfileGuard opt-in.
+  allow-non-local-db-without-prod: true
   security:
+    session-cookie-secure: false
     ip-hash-secret: test-only-ip-hash-secret
     # Speed only: production uses 12 (see application.yml).
     bcrypt-strength: 4

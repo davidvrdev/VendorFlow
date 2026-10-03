@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,12 +15,20 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UrlPathHelper;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Applies per-IP limits to the abuse-prone public endpoints before any authentication/CSRF work is done (so a flood
- * costs us as little as possible). Responds 429 problem+json with Retry-After. The client address is the servlet
- * remote address: behind a reverse proxy that must be the real client (see the risk note in the Phase 1 report).
+ * costs us as little as possible). Responds 429 problem+json with Retry-After.
+ *
+ * <p>Client address: the servlet remote address. With {@code server.forward-headers-strategy=native} Tomcat's
+ * RemoteIpValve has already replaced it with the real client IP, honouring X-Forwarded-For only from trusted proxies
+ * (docs/SECURITY.md section 9); this class must never read X-Forwarded-For itself.
+ *
+ * <p>Path matching is done on the decoded, normalized path ({@link #normalize}), never on the raw request URI:
+ * {@code /api/v1/auth/%6cogin} routes to the login handler, so it must be counted as login.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
@@ -27,7 +36,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-    /** POST path -> rule name (see RateLimitProperties for the limits). */
+    /** POST path (normalized, lower case) -> rule name (see RateLimitProperties for the limits). */
     private static final Map<String, String> RULES = Map.of(
             "/api/v1/auth/login", "login",
             "/api/v1/auth/signup", "signup",
@@ -47,7 +56,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String rule = HttpMethod.POST.matches(request.getMethod()) ? RULES.get(request.getRequestURI()) : null;
+        String rule = HttpMethod.POST.matches(request.getMethod()) ? RULES.get(normalize(request)) : null;
         if (rule != null) {
             RateLimiter.Decision decision = limiter.tryAcquire(rule, request.getRemoteAddr());
             if (!decision.allowed()) {
@@ -58,5 +67,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
             }
         }
         chain.doFilter(request, response);
+    }
+
+    /**
+     * Path within the application, percent-decoded once (as the router does), with ";params" and duplicate slashes
+     * removed (UrlPathHelper), dot segments resolved, trailing slashes dropped and lower-cased. Routing is
+     * case-sensitive and does not match a trailing slash, so most variants never reach a handler; we count them
+     * anyway so no variant can be used to probe around the budget.
+     */
+    static String normalize(HttpServletRequest request) {
+        String path = UrlPathHelper.defaultInstance.getPathWithinApplication(request);
+        path = StringUtils.cleanPath(path).toLowerCase(Locale.ROOT);
+        int end = path.length();
+        while (end > 1 && path.charAt(end - 1) == '/') {
+            end--;
+        }
+        return path.substring(0, end);
     }
 }

@@ -17,7 +17,7 @@ public class SessionCookieConfig {
     public static final String COOKIE_NAME = "VF_SESSION";
 
     @Bean
-    CookieSerializer cookieSerializer(@Value("${app.security.session-cookie-secure:false}") boolean secure) {
+    CookieSerializer cookieSerializer(@Value("${app.security.session-cookie-secure:true}") boolean secure) {
         DefaultCookieSerializer serializer = new DefaultCookieSerializer();
         serializer.setCookieName(COOKIE_NAME);
         serializer.setUseHttpOnlyCookie(true);

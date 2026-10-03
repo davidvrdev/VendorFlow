@@ -22,6 +22,8 @@ Stripe → signed fixture events with a test webhook secret; storage → filesys
   on ordering.
 - `MutableClock` (primary `Clock` bean in `TestBeans`) lets tests advance time (lock expiry, outbox backoff, "today"); `CapturingEmailSender` replaces the email provider; both plus the rate limiter are reset before every test by `IntegrationTest`.
 - `TestAccounts` (signup/login/join-organization factories) and `ApiClient` (cookie jar + CSRF header, like the frontend) live in `support/`; use them instead of hand-building cookies. **Do not use `.with(csrf())`** from spring-security-test: it permanently swaps the CSRF repository of the shared filter chain for the whole JVM and breaks later tests; `ApiClient` sends the real cookie + header pair.
+- **Real-server tests**: MockMvc does not run Tomcat valves, so anything depending on them (trusted-proxy / `X-Forwarded-For` handling) extends `support/RealServerTest` (`@SpringBootTest(RANDOM_PORT)` + `RestClient`; the peer address is 127.0.0.1). Each distinct configuration starts another server (a few seconds): keep them few. On the Windows/JDK 25 machine Tomcat needs `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp` (docs/DEV_SETUP.md); Linux CI needs nothing, so surefire is not configured for it.
+- Tests that move `MutableClock` by more than 7 days must log in again (absolute session lifetime). `ApiClient` paths containing `%` are sent as-is (already encoded), to test percent-encoding variants.
 - Test names describe behavior: `memberCannotArchiveVendor()`, `userOfOtherOrgGets404ForDocumentDownload()`.
 
 ## Critical E2E flows (Phase 10 must have all green)

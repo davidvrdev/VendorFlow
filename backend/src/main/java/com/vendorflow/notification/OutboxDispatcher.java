@@ -1,6 +1,7 @@
 package com.vendorflow.notification;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -23,7 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * sender so the provider can deduplicate (Resend supports an Idempotency-Key header).
  *
  * <p>A failing send never aborts the batch: the exception is caught per row and recorded (sanitized and truncated,
- * since provider errors may echo request data). Backoff 1m, 5m, 30m, 2h, 6h; the 6th failed attempt marks the row
+ * since provider errors may echo request data, including recipient addresses). Backoff 1m, 5m, 30m, 2h, 6h; the 6th failed attempt marks the row
  * DEAD. Secrets (the raw token) are removed from the payload when a row reaches SENT or DEAD.
  */
 @Service
@@ -32,6 +33,10 @@ public class OutboxDispatcher {
     private static final Logger log = LoggerFactory.getLogger(OutboxDispatcher.class);
     private static final int MAX_ERROR_LENGTH = 500;
     /** Long url-safe/base64 runs (token-like) and explicit token=... fragments. */
+    /** Max lifetime of the raw token an undelivered row may carry (see NotificationRepository#scrubUndeliveredTokens). */
+    static final Duration ACCOUNT_TOKEN_MAX_AGE = Duration.ofHours(24);
+    static final Duration INVITATION_TOKEN_MAX_AGE = Duration.ofDays(7);
+    private static final Pattern EMAIL_ADDRESS = Pattern.compile("\\S+@\\S+");
     private static final Pattern TOKEN_LIKE = Pattern.compile("(?i)(token=)?[A-Za-z0-9_-]{32,}");
 
     private final NotificationRepository notifications;
@@ -56,6 +61,11 @@ public class OutboxDispatcher {
     public int dispatchBatch() {
         Integer processed = tx.execute(status -> {
             Instant now = clock.instant();
+            int scrubbed = notifications.scrubUndeliveredTokens(now, now.minus(ACCOUNT_TOKEN_MAX_AGE),
+                    now.minus(INVITATION_TOKEN_MAX_AGE));
+            if (scrubbed > 0) {
+                log.info("Outbox: {} undelivered notification(s) past their token lifetime marked DEAD", scrubbed);
+            }
             List<Notification> due = notifications.claimDue(now, batchSize);
             for (Notification n : due) {
                 process(n, now);
@@ -81,7 +91,9 @@ public class OutboxDispatcher {
 
     static String sanitize(Exception e) {
         String message = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
-        String cleaned = TOKEN_LIKE.matcher(message).replaceAll("[redacted]").replaceAll("[\\r\\n]+", " ");
+        // Emails first: an address can itself contain a long token-like run.
+        String cleaned = TOKEN_LIKE.matcher(EMAIL_ADDRESS.matcher(message).replaceAll("[redacted-email]"))
+                .replaceAll("[redacted]").replaceAll("[\\r\\n]+", " ");
         return cleaned.length() <= MAX_ERROR_LENGTH ? cleaned : cleaned.substring(0, MAX_ERROR_LENGTH);
     }
 }

@@ -267,4 +267,132 @@ class OutboxTest extends IntegrationTest {
             logger.detachAppender(appender);
         }
     }
+
+    // ---- L2: last_error redaction ----
+
+    @Test
+    void lastErrorRedactsEmailAddressesAndIsCappedAt500() {
+        enqueueVerification("k-mail");
+        emailSender.failWith(new IllegalStateException(
+                "Recipient victim.person@example.com rejected; cc <other@corp.example.org>"));
+        dispatcher.dispatchBatch();
+        String lastError = (String) row("k-mail").get("last_error");
+        assertThat(lastError).doesNotContain("victim.person").doesNotContain("example.com").doesNotContain("@");
+        assertThat(lastError).contains("rejected");
+
+        assertThat(OutboxDispatcher.sanitize(new IllegalStateException("a@b.c " + "z ".repeat(1000)))).hasSize(500);
+    }
+
+    // ---- L1: tokens do not linger in undelivered rows ----
+
+    private void enqueueWithKind(NotificationKind kind, String key) {
+        tx.executeWithoutResult(s -> outbox.enqueue(kind, null, "scrub-" + key + "@example.com", key,
+                Map.of("token", "tok-" + key, "fullName", "Ada")));
+    }
+
+    @Test
+    void undeliveredAccountRowsOlderThan24hAreMarkedDeadAndLoseTheirToken() {
+        enqueueWithKind(NotificationKind.EMAIL_VERIFICATION, "old-pending");
+        enqueueWithKind(NotificationKind.PASSWORD_RESET, "old-failed");
+        enqueueWithKind(NotificationKind.EMAIL_VERIFICATION, "fresh");
+        // old-failed is FAILED and not due; old-pending is PENDING (dispatcher was down)
+        jdbc.update("update notification set status = 'FAILED', next_attempt_at = now() + interval '30 days' "
+                + "where idempotency_key = 'old-failed'");
+        jdbc.update("update notification set created_at = now() - interval '25 hours' "
+                + "where idempotency_key in ('old-pending', 'old-failed')");
+        jdbc.update("update notification set created_at = now() - interval '23 hours' where idempotency_key = 'fresh'");
+        // a SENT row is already scrubbed by the normal path; the scrub must not touch SENT rows
+        enqueueWithKind(NotificationKind.EMAIL_VERIFICATION, "old-sent");
+        jdbc.update("update notification set status = 'SENT', created_at = now() - interval '30 hours' "
+                + "where idempotency_key = 'old-sent'");
+
+        dispatcher.dispatchBatch(); // the scrub runs at the start of every cycle
+
+        for (String key : List.of("old-pending", "old-failed")) {
+            Map<String, Object> r = row(key);
+            assertThat(r.get("status")).as(key).isEqualTo("DEAD");
+            assertThat(r.get("payload").toString()).as(key).doesNotContain("tok-").contains("fullName");
+            assertThat(r.get("last_error").toString()).contains("expired");
+        }
+        assertThat(emailSender.sent()).extracting(EmailMessage::idempotencyKey).containsExactly("fresh");
+        assertThat(row("fresh").get("status")).isEqualTo("SENT");
+        assertThat(row("old-sent").get("status")).isEqualTo("SENT");
+    }
+
+    @Test
+    void scrubUsesTheClockAndInvitationsKeepTheirTokenForSevenDays() {
+        tx.executeWithoutResult(st -> outbox.enqueue(NotificationKind.INVITATION, null, "scrub-invite@example.com",
+                "invite", Map.of("token", "tok-invite", "organizationName", "Acme")));
+        enqueueWithKind(NotificationKind.EMAIL_VERIFICATION, "verify");
+        emailSender.failWith(new IllegalStateException("down"));
+        dispatcher.dispatchBatch(); // both FAILED with backoff, token still there
+        assertThat(row("verify").get("payload").toString()).contains("tok-verify");
+
+        clock.advance(Duration.ofHours(25)); // both due again, but "verify" is beyond the account-token lifetime
+        emailSender.failWith(null);
+        dispatcher.dispatchBatch();
+        assertThat(row("verify").get("status")).isEqualTo("DEAD");
+        assertThat(row("verify").get("payload").toString()).doesNotContain("tok-verify");
+        // 25h is within the invitation token lifetime (7 days): still delivered normally
+        assertThat(row("invite").get("status")).isEqualTo("SENT");
+
+        tx.executeWithoutResult(st -> outbox.enqueue(NotificationKind.INVITATION, null, "scrub-invite2@example.com",
+                "invite2", Map.of("token", "tok-invite2", "organizationName", "Acme")));
+        jdbc.update("update notification set created_at = now() - interval '8 days' where idempotency_key = 'invite2'");
+        dispatcher.dispatchBatch();
+        assertThat(row("invite2").get("status")).isEqualTo("DEAD");
+        assertThat(row("invite2").get("payload").toString()).doesNotContain("tok-invite2");
+    }
+
+    // ---- M3: per-recipient throttle of account emails ----
+
+    private boolean enqueueFor(NotificationKind kind, String recipient, String key) {
+        return Boolean.TRUE.equals(
+                tx.execute(s -> outbox.enqueue(kind, null, recipient, key, Map.of("token", "t-" + key))));
+    }
+
+    @Test
+    void accountEmailsAreLimitedToThreePerRecipientPerHour() {
+        String victim = "Victim-" + UUID.randomUUID().toString().substring(0, 6) + "@example.com";
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(OutboxService.class);
+        logger.addAppender(appender);
+        try {
+            assertThat(enqueueFor(NotificationKind.EMAIL_VERIFICATION, victim, "th-1")).isTrue();
+            assertThat(enqueueFor(NotificationKind.PASSWORD_RESET, victim.toLowerCase(), "th-2")).isTrue();
+            assertThat(enqueueFor(NotificationKind.PASSWORD_RESET, victim, "th-3")).isTrue();
+            // 4th within the hour: silently not enqueued (case-insensitive recipient, both kinds counted together)
+            assertThat(enqueueFor(NotificationKind.EMAIL_VERIFICATION, victim.toUpperCase(), "th-4")).isFalse();
+            assertThat(jdbc.queryForObject("select count(*) from notification where idempotency_key = 'th-4'",
+                    Integer.class)).isZero();
+            // other recipients and non-account kinds are not affected
+            assertThat(enqueueFor(NotificationKind.EMAIL_VERIFICATION, "someone-else@example.com", "th-5")).isTrue();
+            assertThat(enqueueFor(NotificationKind.INVITATION, victim, "th-6")).isTrue();
+
+            assertThat(appender.list).anySatisfy(e -> {
+                assertThat(e.getLevel().toString()).isEqualTo("INFO");
+                assertThat(e.getFormattedMessage()).contains("EMAIL_VERIFICATION").contains("example.com")
+                        .doesNotContain(victim.toLowerCase()).doesNotContain("ictim");
+            });
+
+            clock.advance(Duration.ofMinutes(61)); // window passed
+            assertThat(enqueueFor(NotificationKind.EMAIL_VERIFICATION, victim, "th-7")).isTrue();
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void passwordResetApiResponseIsUnchangedWhenThrottled() throws Exception {
+        TestAccounts accounts = new TestAccounts(mvc, json, jdbc);
+        TestAccounts.Account a = accounts.signup("Throttle Org");
+        for (int i = 0; i < 5; i++) {
+            accounts.newClient().post("/api/v1/auth/password-reset/request", Map.of("email", a.email()))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isAccepted());
+        }
+        // 1 verification (signup) + 2 resets fit in the budget of 3; the rest was dropped
+        assertThat(jdbc.queryForObject("select count(*) from notification where recipient_email = ?", Integer.class,
+                a.email())).isEqualTo(3);
+    }
 }

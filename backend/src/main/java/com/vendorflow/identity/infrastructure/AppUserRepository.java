@@ -18,7 +18,8 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     /**
      * Atomic increment (no read-modify-write race between parallel guesses). Locks once the NEW count reaches the
      * threshold; later failures while the counter stays at/above it re-lock, so after a lock expires a single
-     * wrong guess locks again.
+     * wrong guess locks again. Only touches rows that are NOT currently locked, so the lock/no-lock decision is made
+     * by the database on the latest committed state, never on a snapshot read before bcrypt; returns 0 when locked.
      */
     @Modifying
     @Query("""
@@ -26,16 +27,20 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
             set u.failedLoginAttempts = u.failedLoginAttempts + 1,
                 u.lockedUntil = case when u.failedLoginAttempts + 1 >= :threshold then :lockUntil else u.lockedUntil end,
                 u.updatedAt = :now
-            where u.id = :id
+            where u.id = :id and (u.lockedUntil is null or u.lockedUntil <= :now)
             """)
     int recordFailedLogin(@Param("id") UUID id, @Param("threshold") int threshold,
             @Param("lockUntil") Instant lockUntil, @Param("now") Instant now);
 
+    /**
+     * Success path, decided atomically: only succeeds (returns 1) if the account is not locked at this very moment.
+     * A correct guess that was in flight while parallel wrong guesses engaged the lock gets 0 and must be rejected.
+     */
     @Modifying
     @Query("""
             update AppUser u
             set u.failedLoginAttempts = 0, u.lockedUntil = null, u.lastLoginAt = :now, u.updatedAt = :now
-            where u.id = :id
+            where u.id = :id and (u.lockedUntil is null or u.lockedUntil <= :now)
             """)
     int recordSuccessfulLogin(@Param("id") UUID id, @Param("now") Instant now);
 

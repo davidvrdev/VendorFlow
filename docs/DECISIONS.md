@@ -18,6 +18,14 @@ Major decisions get an ADR in `docs/adr/`. Small decisions are logged here, one 
 ## Small decisions
 | Date | Decision | Why |
 |---|---|---|
+| 2026-10-03 | `server.forward-headers-strategy=native` + `server.tomcat.remoteip.internal-proxies` (env `TRUSTED_PROXIES_REGEX`) in all profiles | `framework` trusted the leftmost X-Forwarded-For (spoofable rate-limit/audit key); RemoteIpValve honours it only from trusted proxies. Deployment requirement: SECURITY.md section 9 |
+| 2026-10-03 | Rate-limit rules match the decoded, normalized, lower-cased path (UrlPathHelper + cleanPath) | `/auth/%6cogin` reached the handler unlimited; all variants now share one budget |
+| 2026-10-03 | Lockout decided in SQL after bcrypt (both update statements require "not locked now") | The pre-bcrypt snapshot let parallel guesses and an in-flight correct guess bypass the lock |
+| 2026-10-03 | `session-cookie-secure` defaults to true; ProfileGuard refuses weak prod config and a non-local DB without prod | A missing `SPRING_PROFILES_ACTIVE` must fail closed, not run with local creds/secret |
+| 2026-10-03 | `@PlainText` (rejects Cc + Cf) on all human-entered names; max 3 verification/reset emails per recipient per hour (silently dropped) | Control/bidi characters in email bodies; mailbox flooding via anonymous endpoints. Cf also blocks ZWJ in names (accepted) |
+| 2026-10-03 | Undelivered outbox rows lose their raw token after the token lifetime (24h; invitations 7d) and become DEAD; `last_error` also redacts email addresses | Raw tokens must not linger; provider errors may echo addresses |
+| 2026-10-03 | Absolute session lifetime 7 days via `SessionLifetimeFilter` (order -101, before the Security chain) | A sliding idle timeout alone lets a stolen session live forever; running before Security keeps public endpoints usable with an expired cookie and yields 401 through the normal entry point |
+| 2026-10-03 | E2E mailbox answers only loopback callers (404 otherwise) | Defense in depth on top of profile e2e |
 | 2026-10-03 | `shadcn` is a devDependency | Only its CSS is consumed at build time; keeps its CLI dependency tree (7 high advisories) out of production |
 | 2026-10-03 | `spring.profiles.default=local` (not `active`) | Env/test profiles replace it instead of stacking |
 | 2026-10-03 | `NullRequestCache` in Spring Security | JSON API: a 401 must not create a session cookie |

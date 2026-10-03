@@ -1,5 +1,6 @@
 package com.vendorflow.organization.api;
 
+import com.vendorflow.shared.validation.PlainText;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +12,7 @@ import java.util.List;
  * anything else, e.g. an organization id. Zone validity and offset uniqueness are checked in the service.
  */
 public record UpdateOrganizationRequest(
-        @Size(min = 1, max = 120) String name,
+        @Size(min = 1, max = 120) @PlainText String name,
         @Size(max = 64) String timeZone,
         @Min(1) @Max(180) Integer expiringWindowDays,
         @Size(min = 1, max = 5) List<@NotNull @Min(1) @Max(180) Integer> reminderOffsetsDays,

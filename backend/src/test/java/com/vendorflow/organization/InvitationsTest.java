@@ -62,6 +62,12 @@ class InvitationsTest extends IntegrationTest {
         return json.readTree(body);
     }
 
+    /** Tests that move the clock by more than the 7-day absolute session lifetime must log in again. */
+    private void relogin(Account account) throws Exception {
+        account.client().post("/api/v1/auth/login", Map.of("email", account.email(), "password", account.password()))
+                .andExpect(status().isOk());
+    }
+
     /** Invites and returns the raw token the way the invitee gets it: from the delivered email. */
     private String inviteAndGetToken(String email, String role) throws Exception {
         invite(owner, email, role, 201);
@@ -118,7 +124,11 @@ class InvitationsTest extends IntegrationTest {
     @Test
     void emailContentIsHtmlEscapedAndHeaderSafe() throws Exception {
         Account evil = accounts.verified(accounts.signup(TestAccounts.uniqueEmail(), TestAccounts.PASSWORD,
-                "Eve <img src=x onerror=alert(1)>\r\nBcc: attacker@example.com", "Acme <script>alert(1)</script> Org"));
+                "Eve <img src=x onerror=alert(1)>", "Acme <script>alert(1)</script> Org"));
+        // The API now rejects control characters in names (@PlainText), so simulate legacy/bad data directly in the
+        // database to keep proving the email layer is header-safe on its own (defense in depth).
+        jdbc.update("update app_user set full_name = ? where id = ?::uuid",
+                "Eve <img src=x onerror=alert(1)>\r\nBcc: attacker@example.com", evil.userId());
         String email = TestAccounts.uniqueEmail();
         invite(evil, email, "VIEWER", 201);
 
@@ -183,6 +193,7 @@ class InvitationsTest extends IntegrationTest {
         String email = TestAccounts.uniqueEmail();
         String oldToken = inviteAndGetToken(email, "MEMBER");
         clock.advance(Duration.ofDays(8));
+        relogin(owner);
 
         String newToken = inviteAndGetToken(email, "VIEWER");
 
@@ -221,6 +232,7 @@ class InvitationsTest extends IntegrationTest {
 
         invite(owner, expired, "MEMBER", 201);
         clock.advance(Duration.ofDays(8));
+        relogin(owner);
         invite(owner, pending1, "MEMBER", 201);
         invite(owner, revoked, "VIEWER", 201);
         owner.client().delete(INVITATIONS + "/" + invitationId(revoked)).andExpect(status().isNoContent());

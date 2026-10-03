@@ -1,12 +1,11 @@
 # Production: no datasource defaults (DATABASE_* must be provided; startup fails otherwise).
-server:
-  forward-headers-strategy: framework
+# Forwarded headers / trusted proxies are configured in application.yml (all profiles); see docs/SECURITY.md section 9.
 
 app:
-  # No defaults: startup fails if these are missing.
+  # No defaults: startup fails if these are missing. ProfileGuard additionally refuses weak values.
   base-url: ${APP_BASE_URL}
   security:
-    session-cookie-secure: true
+    session-cookie-secure: true # also the global default; kept explicit
     ip-hash-secret: ${APP_IP_HASH_SECRET}
 
 logging:

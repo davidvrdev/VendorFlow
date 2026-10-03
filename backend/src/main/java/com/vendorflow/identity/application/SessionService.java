@@ -4,6 +4,7 @@ import com.vendorflow.organization.application.ActiveOrganizationSession;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import java.time.Clock;
 import java.util.UUID;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -30,11 +31,13 @@ public class SessionService {
     private final SecurityContextRepository securityContextRepository;
     private final CookieCsrfTokenRepository csrfTokenRepository;
     private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
+    private final Clock clock;
     private final SecurityContextHolderStrategy holder = SecurityContextHolder.getContextHolderStrategy();
 
     public SessionService(SecurityContextRepository securityContextRepository,
             CookieCsrfTokenRepository csrfTokenRepository,
-            FindByIndexNameSessionRepository<? extends Session> sessionRepository) {
+            FindByIndexNameSessionRepository<? extends Session> sessionRepository, Clock clock) {
+        this.clock = clock;
         this.sessionRepository = sessionRepository;
         this.securityContextRepository = securityContextRepository;
         this.csrfTokenRepository = csrfTokenRepository;
@@ -55,6 +58,8 @@ public class SessionService {
         securityContextRepository.saveContext(context, request, response); // creates the session if needed
 
         HttpSession session = request.getSession(true);
+        // Start of the absolute session lifetime (SessionLifetimeFilter).
+        session.setAttribute(SessionLifetimeFilter.AUTHENTICATED_AT, clock.millis());
         if (activeOrganizationId != null) {
             ActiveOrganizationSession.set(session, activeOrganizationId);
         } else {

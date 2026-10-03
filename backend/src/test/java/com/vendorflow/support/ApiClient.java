@@ -85,7 +85,10 @@ public class ApiClient {
     }
 
     public ResultActions perform(HttpMethod method, String path, Object body, boolean csrfHeader) throws Exception {
-        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.request(method, path);
+        // A path containing '%' is sent as-is (already encoded): the String overload would encode '%' again.
+        MockHttpServletRequestBuilder builder = path.contains("%")
+                ? MockMvcRequestBuilders.request(method, java.net.URI.create(path))
+                : MockMvcRequestBuilders.request(method, path);
         builder.with(request -> {
             request.setRemoteAddr(remoteAddr);
             return request;

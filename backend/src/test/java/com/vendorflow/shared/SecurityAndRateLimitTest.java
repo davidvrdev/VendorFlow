@@ -42,6 +42,36 @@ class SecurityAndRateLimitTest extends IntegrationTest {
     }
 
     @Test
+    void encodedTrailingSlashCaseAndParamVariantsShareTheLoginBudget() throws Exception {
+        // %6c = 'l': the router decodes it, so /auth/%6cogin IS the login endpoint and must be counted as login.
+        String[] variants = {"/api/v1/auth/%6cogin", "/api/v1/auth/login/", "/API/v1/auth/Login",
+                "/api/v1/auth/login;jsessionid=x", "/api/v1/auth/%4Cogin", "/api/v1/auth/x/../login",
+                "/api/v1/auth/%6c%6f%67in", "/api/v1/auth/login//", "/api/v1/./auth/login", "/api/v1/auth/login"};
+        ApiClient attacker = new ApiClient(mvc, json).remoteAddr("203.0.113.50").primeCsrf();
+        for (String variant : variants) { // 10 requests = the whole login budget, none of them via the canonical path
+            attacker.post(variant, Map.of("email", "x@example.com", "password", "Wrong-Password-123"))
+                    .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(429));
+        }
+        for (String variant : variants) {
+            attacker.post(variant, Map.of("email", "x@example.com", "password", "Wrong-Password-123"))
+                    .andExpect(status().isTooManyRequests());
+        }
+        // The canonical path shares the exhausted budget.
+        attacker.post("/api/v1/auth/login", Map.of("email", "x@example.com", "password", "Wrong-Password-123"))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void casedAndTrailingSlashVariantsDoNotReachTheLoginHandler() throws Exception {
+        ApiClient client = new ApiClient(mvc, json).remoteAddr("203.0.113.51").primeCsrf();
+        for (String variant : new String[] {"/API/v1/auth/login", "/api/v1/auth/login/"}) {
+            client.post(variant, Map.of("email", "x@example.com", "password", "Wrong-Password-123"))
+                    .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                            .doesNotContain("invalid-credentials"));
+        }
+    }
+
+    @Test
     void signupAndOtherAuthRulesHaveTheirOwnLimits() throws Exception {
         ApiClient client = new ApiClient(mvc, json).remoteAddr("203.0.113.20").primeCsrf();
         for (int i = 0; i < 5; i++) {

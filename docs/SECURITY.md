@@ -15,8 +15,8 @@ escalating inside their org; malicious file uploader; forged webhook sender; com
 | Cross-tenant access (IDOR/BOLA) | Org from server session, membership re-verified per request, org-scoped repositories, composite FKs, 404 on foreign ids, cross-tenant tests per endpoint |
 | Privilege escalation | Permission checks in application services (not only `@PreAuthorize` on controllers); OWNER role cannot be granted by ADMIN; last-owner invariant; tests per role |
 | Mass assignment | Request DTOs are explicit records; never bind to entities; `organizationId`/`role`/`status` fields are not accepted where not intended |
-| Account takeover / brute force | bcrypt (cost 12) via DelegatingPasswordEncoder; per-account lockout (5 failures → 15 min); per-IP rate limit on auth endpoints; generic login error; session id rotated on login |
-| Session theft | `HttpOnly; Secure; SameSite=Lax` cookie; server-side sessions (revocable); idle timeout 8h; logout invalidates server session |
+| Account takeover / brute force | bcrypt (cost 12) via DelegatingPasswordEncoder; per-account lockout (5 failures → 15 min, decided atomically in the database after bcrypt); per-IP rate limit on auth endpoints (matched on the decoded, normalized path); generic login error; session id rotated on login |
+| Session theft | `HttpOnly; Secure; SameSite=Lax` cookie; server-side sessions (revocable); idle timeout 8h (sliding) + absolute lifetime 7 days since login (`SessionLifetimeFilter`, `app.security.session-absolute-timeout`); logout invalidates server session |
 | CSRF | Spring Security CSRF with cookie token repository + `X-XSRF-TOKEN` header for all unsafe methods (webhooks exempt; they use signatures) |
 | XSS | React escaping; no `dangerouslySetInnerHTML`; strict CSP (Phase 9); user filenames rendered as text only; email templates escape all values |
 | SQL injection | JPA parameter binding only; no string-concatenated queries; sort fields allowlisted |
@@ -28,8 +28,11 @@ escalating inside their org; malicious file uploader; forged webhook sender; com
 | Error disclosure | RFC 9457 ProblemDetail with generic messages; stack traces only in server logs; `server.error.include-*=never` |
 | Insecure CORS | Production: no CORS (same-origin via Next.js rewrite). Dev: explicit allowlist `http://localhost:3000` only |
 | Secrets leakage | Secrets only via environment variables; `.env*` gitignored; `.env.example` has placeholders; logs never include secrets/tokens/passwords/file contents |
-| Enumeration | UUID ids; signup/password-reset responses do not reveal whether an email exists |
-| Denial of wallet / abuse | Rate limits on auth, upload, invitation and email-triggering endpoints; pagination caps |
+| Enumeration | UUID ids; login and password-reset responses do not reveal whether an email exists. **Signup does** (409 "email already registered"): accepted trade-off for a usable signup form, bounded by the per-IP signup rate limit (5/min) |
+| Denial of wallet / abuse | Rate limits on auth, upload, invitation and email-triggering endpoints; pagination caps; max 3 verification/reset emails per recipient address per hour (`OutboxService`, excess silently not enqueued) |
+| Client-IP spoofing | `server.forward-headers-strategy=native` (Tomcat RemoteIpValve): X-Forwarded-For honoured only from trusted proxies, rightmost untrusted entry wins (section 9) |
+| Fail-open misconfiguration | `app.security.session-cookie-secure` defaults to true; `ProfileGuard` refuses startup for weak prod settings and for a non-local database without the `prod` profile (section 7) |
+| Text/header injection via names | `@PlainText` rejects control (Cc) and format (Cf, bidi overrides) characters in every human-entered name; email templates still escape/one-line values |
 
 ## 2. Authentication (ADR-0002)
 - Email + password, Spring Security, server-side sessions stored in Postgres (Spring Session JDBC).
@@ -37,6 +40,7 @@ escalating inside their org; malicious file uploader; forged webhook sender; com
 - Hashing (implemented): `DelegatingPasswordEncoder` with a single `{bcrypt}` entry built by us at cost **12** (`app.security.bcrypt-strength`; the stock `PasswordEncoderFactories` factory is cost 10). The test profile lowers it to 4 for speed only. Unknown emails are checked against a dummy hash so login timing does not reveal whether an account exists.
 - Email verification required before inviting others or receiving reminders (login allowed; banner shown).
 - Password reset: single-use token (hash stored), 30-minute expiry; all sessions of the user invalidated on reset.
+- Lockout details: the stale pre-bcrypt user read is NOT used to decide; after bcrypt the failure update (increment, lock at 5) and the success update (reset) each run as one SQL statement that only matches an account that is not locked right now, and a login whose success update changes 0 rows is rejected. Parallel guesses therefore count at most 5, and a correct guess in flight while the lock engages is refused.
 - Login (implemented): generic "Invalid email or password" for unknown email, wrong password and locked account (identical body). Lockout: 5 consecutive failures set `locked_until = now + 15 min` (atomic SQL update; counter is kept so one more failure after expiry re-locks; success resets it); failures while locked are not counted. Per-IP limiter (`shared.ratelimit`, fixed window, fires before CSRF/auth); in-process (documented
   limitation: per-instance; acceptable until >1 instance — then move counters to Postgres).
 
@@ -86,10 +90,24 @@ Enforcement happens in application services via `AuthorizationService.require(Pe
 - Log: auth success/failure (user id or email domain), authorization denials (permission, user, org), document
   operations (ids), reminder/outbox transitions, Stripe event ids/types, application errors with stack traces.
 
-## 7. Secrets
+## 7. Secrets and startup safety
+- `ProfileGuard` (fails the boot): `e2e`+`prod`; with `prod`: dev or short (<32) ip-hash secret, `session-cookie-secure=false`, non-https `app.base-url`; WITHOUT `prod`: a database host that is not localhost/127.0.0.1/[::1]/host.docker.internal unless `app.allow-non-local-db-without-prod=true` (a forgotten `SPRING_PROFILES_ACTIVE=prod` must not run production data with local settings; `application-test.yml` sets the opt-in because Testcontainers may use a remote Docker host).
 - Supplied via environment variables (see `.env.example`). Local dev uses `.env` files that are gitignored.
-- Required in prod: `DATABASE_URL/USER/PASSWORD`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
-  `STORAGE_S3_*`, `APP_IP_HASH_SECRET`. Rotation procedure: `docs/runbooks/secret-rotation.md` (Phase 11).
+- Required in prod: `DATABASE_URL/USER/PASSWORD`, `APP_BASE_URL` (https), optional `TRUSTED_PROXIES_REGEX`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
+  `STORAGE_S3_*`, `APP_IP_HASH_SECRET` (>= 32 chars, not a dev value). Rotation procedure: `docs/runbooks/secret-rotation.md` (Phase 11).
 
-## 8. Reporting
+## 8. Residual risks (accepted)
+- **Timing of the DB write (L3)**: a failed login for a known email performs a counter UPDATE that an unknown email does not, so response time can differ by a few milliseconds; the bcrypt verification (the dominant cost) is equalized. Not fixed.
+- **Signup reveals existing emails** (409), see the Enumeration row.
+- In-process rate limiter (per instance); see section 2.
+- The 3-per-hour account-email throttle is check-then-insert without a lock, so concurrent requests can overshoot slightly; acceptable for abuse damping.
+
+## 9. Deployment requirement: client IP and trusted proxies
+Rate limiting and the audit `ip_hash` use `request.getRemoteAddr()`. The app runs with `server.forward-headers-strategy: native` in ALL profiles: Tomcat's RemoteIpValve walks `X-Forwarded-For` from right to left and only believes an entry when the peer that sent it is a trusted proxy; the first untrusted address becomes the client IP. (`framework`/ForwardedHeaderFilter was rejected: it trusts the client-controlled leftmost entry, so one header value per request defeated every limit.)
+- Trusted proxies = `server.tomcat.remoteip.internal-proxies`, env `TRUSTED_PROXIES_REGEX` (regex on the peer IP). Default: loopback + private ranges (10/8, 172.16/12, 192.168/16, 169.254/16, 127/8, ::1).
+- The Next.js server (rewrite/proxy to the API) and any edge/CDN in front **must append the real client IP** to `X-Forwarded-For` (the peer address it sees, added to the right of whatever the browser sent), and the API port must be **reachable only through trusted proxies** (private network / firewall). If the API is reachable directly from the internet, set `TRUSTED_PROXIES_REGEX` to the exact proxy addresses; peers outside it cannot influence their IP.
+- If the real proxy is not in the trusted list, every user shares the proxy's IP and one noisy client rate-limits everybody: check this at deployment.
+- Tests: `ClientIpTrustedProxyTest`, `ClientIpUntrustedPeerTest` (real Tomcat).
+
+## 10. Reporting
 Security issues: contact the owner privately; do not open public issues.

@@ -1,5 +1,7 @@
 # Full-stack Playwright runs only (SPRING_PROFILES_ACTIVE=local,e2e). Never combine with prod (ProfileGuard).
 app:
+  security:
+    session-cookie-secure: false # plain http
   outbox:
     dispatcher:
       # Emails reach the in-memory mailbox within about a second instead of 15 s.

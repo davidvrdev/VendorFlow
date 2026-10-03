@@ -7,5 +7,6 @@ spring:
 app:
   base-url: ${APP_BASE_URL:http://localhost:3000}
   security:
+    session-cookie-secure: false # plain http on localhost
     # Local-only value; prod requires APP_IP_HASH_SECRET.
     ip-hash-secret: ${APP_IP_HASH_SECRET:local-dev-only-ip-hash-secret-change-me}

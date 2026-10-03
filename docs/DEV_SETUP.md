@@ -34,7 +34,8 @@ docker run --rm -p 8080:8080 -e DATABASE_URL=jdbc:postgresql://host.docker.inter
 - **`Unable to establish loopback connection` when starting Tomcat (JDK 25 on Windows)**: the JDK's NIO selector
   uses a Unix-domain socket in the temp dir, which can fail on some machines. Workaround: point it at a short,
   writable directory, e.g. `mkdir C:\vf-tmp` and run with `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp`
-  (Git Bash: `export JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp`). Tests using MockMvc are not affected.
+  (Git Bash: `export JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp`). Tests using MockMvc are not affected, but the real-server tests (`ClientIp*Test`, base class `RealServerTest`) start Tomcat and need it on this kind of machine (`mkdir C:\vf-tmp` once; Linux CI is fine without).
+- **Startup refuses with "database host is not local"**: the default profile is `local`; a non-local `DATABASE_URL` needs `SPRING_PROFILES_ACTIVE=prod` (real deployment) or `APP_ALLOW_NON_LOCAL_DB_WITHOUT_PROD=true` (staging, on purpose). Prod additionally needs `APP_BASE_URL` (https), an `APP_IP_HASH_SECRET` of at least 32 characters, and `TRUSTED_PROXIES_REGEX` if your proxy is outside private ranges (docs/SECURITY.md sections 7 and 9).
 - Tests need Docker Desktop running (Testcontainers pulls `postgres:17-alpine` the first time).
 
 ## Frontend

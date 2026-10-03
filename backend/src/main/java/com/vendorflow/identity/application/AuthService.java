@@ -15,7 +15,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -71,7 +70,6 @@ public class AuthService {
     }
 
     public Me login(LoginRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
-        Instant now = clock.instant();
         Optional<AppUser> found = users.findByEmailIgnoreCase(request.email().trim());
         // Always run exactly one bcrypt verification, whatever the outcome (timing equalization).
         boolean fits = fitsBcrypt(request.password());
@@ -83,18 +81,22 @@ public class AuthService {
             throw invalidCredentials();
         }
         AppUser user = found.get();
-        if (user.isLocked(now)) {
-            // Locked: reject even a correct password; do not count attempts while locked (the lock is fixed length).
+        // The lock state read above is a stale snapshot (bcrypt takes ~250ms; parallel guesses all see "unlocked").
+        // So the decision is made by the database, atomically, AFTER bcrypt: both updates below only touch an
+        // account that is not locked right now.
+        if (!passwordMatches) {
+            if (loginAttempts.recordFailure(user.getId())) {
+                log.warn("Login failed: bad password userId={}", user.getId());
+            } else {
+                log.warn("Login rejected: account locked userId={}", user.getId());
+            }
+            throw invalidCredentials();
+        }
+        if (!loginAttempts.recordSuccess(user.getId())) {
+            // Locked: reject even a correct password (including one that was in flight when the lock engaged).
             log.warn("Login rejected: account locked userId={}", user.getId());
             throw invalidCredentials();
         }
-        if (!passwordMatches) {
-            loginAttempts.recordFailure(user.getId());
-            log.warn("Login failed: bad password userId={}", user.getId());
-            throw invalidCredentials();
-        }
-
-        loginAttempts.recordSuccess(user.getId());
         UUID activeOrganizationId = organizations
                 .resolveActiveOrganization(user.getId(), user.getLastActiveOrganizationId()).orElse(null);
         sessions.start(user.getId(), activeOrganizationId, httpRequest, httpResponse);

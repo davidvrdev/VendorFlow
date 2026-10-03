@@ -14,6 +14,8 @@
 	<name>vendorflow-api</name>
 	<description>VendorFlow API - vendor compliance backend</description>
 	<properties>
+		<!-- Base for surefire @{argLine} (other plugins/profiles may append to it). -->
+		<argLine></argLine>
 		<java.version>21</java.version>
 		<maven.compiler.release>21</maven.compiler.release>
 	</properties>
@@ -114,4 +116,37 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<!--
+			JDK 25 on Windows: NIO creates a Unix-domain socket for its internal wake-up pipe in java.io.tmpdir, which
+			fails on some machines ("Unable to establish loopback connection") and breaks embedded-Tomcat tests.
+			Point it at target/ (always exists when tests run). No effect on Linux/macOS CI.
+		-->
+		<profile>
+			<id>windows-uds-tmpdir</id>
+			<activation>
+				<os>
+					<family>windows</family>
+				</os>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<argLine>@{argLine} -Djdk.net.unixdomain.tmpdir=${project.build.directory}</argLine>
+						</configuration>
+					</plugin>
+					<plugin>
+						<groupId>org.springframework.boot</groupId>
+						<artifactId>spring-boot-maven-plugin</artifactId>
+						<configuration>
+							<jvmArguments>-Djdk.net.unixdomain.tmpdir=${project.build.directory}</jvmArguments>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 </project>

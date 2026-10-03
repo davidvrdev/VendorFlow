@@ -27,14 +27,16 @@ public class LoginAttemptService {
         this.clock = clock;
     }
 
+    /** @return false if the account was already locked (the failure is then not counted; the lock has a fixed length) */
     @Transactional
-    public void recordFailure(UUID userId) {
+    public boolean recordFailure(UUID userId) {
         Instant now = clock.instant();
-        users.recordFailedLogin(userId, MAX_FAILURES, now.plus(LOCK_DURATION), now);
+        return users.recordFailedLogin(userId, MAX_FAILURES, now.plus(LOCK_DURATION), now) == 1;
     }
 
+    /** @return false if the account is locked at this moment: the login must be rejected even with a correct password */
     @Transactional
-    public void recordSuccess(UUID userId) {
-        users.recordSuccessfulLogin(userId, clock.instant());
+    public boolean recordSuccess(UUID userId) {
+        return users.recordSuccessfulLogin(userId, clock.instant()) == 1;
     }
 }
