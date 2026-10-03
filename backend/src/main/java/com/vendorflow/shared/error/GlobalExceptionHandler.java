@@ -68,6 +68,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return validationResponse(ex, errors, new HttpHeaders(), request);
     }
 
+    @ExceptionHandler(ApiException.class)
+    ResponseEntity<Object> handleApi(ApiException ex, WebRequest request) {
+        ProblemDetail pd = Problems.of(ex.status(), ex.slug(), ex.title(), ex.getMessage());
+        return handleExceptionInternal(ex, pd, new HttpHeaders(), ex.status(), request);
+    }
+
+    @ExceptionHandler(RequestValidationException.class)
+    ResponseEntity<Object> handleRequestValidation(RequestValidationException ex, WebRequest request) {
+        return validationResponse(ex, ex.violations(), new HttpHeaders(), request);
+    }
+
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<Object> handleNotFound(NotFoundException ex, WebRequest request) {
         ProblemDetail pd = Problems.of(HttpStatus.NOT_FOUND, "not-found", "Resource not found", ex.getMessage());

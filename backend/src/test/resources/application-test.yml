@@ -1,0 +1,10 @@
+app:
+  base-url: http://localhost:3000
+  security:
+    ip-hash-secret: test-only-ip-hash-secret
+    # Speed only: production uses 12 (see application.yml).
+    bcrypt-strength: 4
+  outbox:
+    dispatcher:
+      # Tests call OutboxDispatcher.dispatchBatch() directly.
+      enabled: false

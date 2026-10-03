@@ -2,6 +2,13 @@
 server:
   forward-headers-strategy: framework
 
+app:
+  # No defaults: startup fails if these are missing.
+  base-url: ${APP_BASE_URL}
+  security:
+    session-cookie-secure: true
+    ip-hash-secret: ${APP_IP_HASH_SECRET}
+
 logging:
   structured:
     format:

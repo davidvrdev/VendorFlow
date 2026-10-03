@@ -32,4 +32,9 @@ public final class Problems {
         return of(HttpStatus.FORBIDDEN, "forbidden", "Access denied",
                 "You do not have permission to perform this action.");
     }
+
+    public static ProblemDetail tooManyRequests() {
+        return of(HttpStatus.TOO_MANY_REQUESTS, "rate-limited", "Too many requests",
+                "Too many requests. Please try again later.");
+    }
 }

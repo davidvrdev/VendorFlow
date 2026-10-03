@@ -15,15 +15,15 @@ import tools.jackson.databind.json.JsonMapper;
  * "properties" are mixed into Jackson.
  */
 @Component
-class ProblemJsonWriter {
+public class ProblemJsonWriter {
 
     private final JsonMapper jsonMapper;
 
-    ProblemJsonWriter(JsonMapper jsonMapper) {
+    public ProblemJsonWriter(JsonMapper jsonMapper) {
         this.jsonMapper = jsonMapper;
     }
 
-    void write(HttpServletResponse response, ProblemDetail pd, String instance) throws IOException {
+    public void write(HttpServletResponse response, ProblemDetail pd, String instance) throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("type", String.valueOf(pd.getType()));
         body.put("title", pd.getTitle());

@@ -20,7 +20,8 @@ Stripe → signed fixture events with a test webhook secret; storage → filesys
 - Base class `IntegrationTest` starts one shared Postgres container (reused across the suite) via
   `@ServiceConnection`. Each test creates its own orgs/users through factories — tests are independent and never rely
   on ordering.
-- `TestClock` bean lets tests set "today" (compliance, reminders).
+- `MutableClock` (primary `Clock` bean in `TestBeans`) lets tests advance time (lock expiry, outbox backoff, "today"); `CapturingEmailSender` replaces the email provider; both plus the rate limiter are reset before every test by `IntegrationTest`.
+- `TestAccounts` (signup/login/join-organization factories) and `ApiClient` (cookie jar + CSRF header, like the frontend) live in `support/`; use them instead of hand-building cookies. **Do not use `.with(csrf())`** from spring-security-test: it permanently swaps the CSRF repository of the shared filter chain for the whole JVM and breaks later tests; `ApiClient` sends the real cookie + header pair.
 - Test names describe behavior: `memberCannotArchiveVendor()`, `userOfOtherOrgGets404ForDocumentDownload()`.
 
 ## Critical E2E flows (Phase 10 must have all green)

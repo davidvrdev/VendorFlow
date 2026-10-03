@@ -15,6 +15,12 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+  session:
+    # Idle timeout (sliding): every request refreshes it.
+    timeout: 8h
+    jdbc:
+      # Flyway (V2) owns the spring_session tables.
+      initialize-schema: never
   mvc:
     problemdetails:
       enabled: true
@@ -46,3 +52,26 @@ management:
 logging:
   pattern:
     correlation: "[%X{requestId:-}] "
+
+app:
+  security:
+    # Cost factor of the {bcrypt} encoder (docs/SECURITY.md). Lowered only in the test profile for speed.
+    bcrypt-strength: 12
+    # Secure flag of the VF_SESSION cookie: false for local/test (plain http), true in application-prod.yml.
+    session-cookie-secure: false
+  outbox:
+    dispatcher:
+      enabled: true
+      fixed-delay-ms: 15000
+      batch-size: 20
+  rate-limit:
+    # Per client IP, per instance, fixed window. Defaults match docs/API.md; override with
+    # app.rate-limit.limits.<rule>=N and app.rate-limit.window=1m.
+    enabled: true
+    window: 1m
+    limits:
+      login: 10
+      signup: 5
+      password-reset-request: 5
+      invitation: 20
+      resend-verification: 3

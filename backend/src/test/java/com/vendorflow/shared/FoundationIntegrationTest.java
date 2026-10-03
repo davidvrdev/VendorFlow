@@ -1,7 +1,6 @@
 package com.vendorflow.shared;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -126,7 +125,7 @@ class FoundationIntegrationTest extends IntegrationTest {
     @Test
     @WithMockUser
     void invalidBodyReturns400WithFieldErrors() throws Exception {
-        mvc.perform(post("/api/v1/test-probe/validate").with(csrf())
+        mvc.perform(post("/api/v1/test-probe/validate").cookie(new jakarta.servlet.http.Cookie("XSRF-TOKEN", "test-token")).header("X-XSRF-TOKEN", "test-token") // not .with(csrf()): it swaps the shared filter chain CSRF repository for the whole JVM
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"\",\"email\":\"not-an-email\"}"))
                 .andExpect(status().isBadRequest())

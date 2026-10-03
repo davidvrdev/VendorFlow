@@ -186,3 +186,14 @@ metadata jsonb (before/after for changed fields; no secrets, no document content
 - Every repository method for a tenant-owned table includes `organizationId`.
 - All list endpoints are paginated (default 25, max 100) with an index-backed sort.
 - Vendor list with compliance summary is a single aggregate query (no per-vendor queries).
+
+## 6. Implementation notes (V2, Phase 1 B1)
+- `V2__identity_organizations.sql` creates organization, app_user, membership, invitation, user_token, audit_event,
+  notification and the Spring Session tables (copied from `spring-session-jdbc` 4.1.1 `schema-postgresql.sql`).
+- Extra CHECKs beyond the tables above: organization name 1–120 chars and `reminder_offsets_days` 1–5 elements each 1–180;
+  `app_user.full_name` 1–100, `email` ≤ 254; `invitation.role` ∈ ADMIN/MEMBER/VIEWER; `notification.kind` ∈ the listed kinds.
+- `invitation.token_hash`, `user_token.token_hash` and `notification.idempotency_key` are `UNIQUE`.
+- `audit_event.organization_id` / `actor_user_id` are FKs with NO `ON DELETE` action (RESTRICT): audit rows are never
+  rewritten or cascaded away; deleting an org/user is blocked until a retention policy exists.
+- `notification` also has `UNIQUE (organization_id, id)` (tenant-table convention, organization may be NULL).
+- Composite FKs `(organization_id, x_id)` are not used yet in V2: no tenant child table exists until Phase 2 (vendor).

@@ -33,10 +33,11 @@ escalating inside their org; malicious file uploader; forged webhook sender; com
 
 ## 2. Authentication (ADR-0002)
 - Email + password, Spring Security, server-side sessions stored in Postgres (Spring Session JDBC).
-- Password policy: min 12 chars, max 128; checked against a small common-password list; no composition rules (NIST 800-63B).
+- Password policy (implemented, `PasswordPolicy`): 12–128 chars and at most 72 UTF-8 bytes (bcrypt rejects longer input; Spring Security 7 throws), not equal to the email, not in `security/common-passwords.txt` (~300 entries, case-insensitive); no composition rules (NIST 800-63B).
+- Hashing (implemented): `DelegatingPasswordEncoder` with a single `{bcrypt}` entry built by us at cost **12** (`app.security.bcrypt-strength`; the stock `PasswordEncoderFactories` factory is cost 10). The test profile lowers it to 4 for speed only. Unknown emails are checked against a dummy hash so login timing does not reveal whether an account exists.
 - Email verification required before inviting others or receiving reminders (login allowed; banner shown).
 - Password reset: single-use token (hash stored), 30-minute expiry; all sessions of the user invalidated on reset.
-- Login: generic "Invalid email or password". Lockout counter per account; per-IP limiter in-process (documented
+- Login (implemented): generic "Invalid email or password" for unknown email, wrong password and locked account (identical body). Lockout: 5 consecutive failures set `locked_until = now + 15 min` (atomic SQL update; counter is kept so one more failure after expiry re-locks; success resets it); failures while locked are not counted. Per-IP limiter (`shared.ratelimit`, fixed window, fires before CSRF/auth); in-process (documented
   limitation: per-instance; acceptable until >1 instance — then move counters to Postgres).
 
 ## 3. Authorization

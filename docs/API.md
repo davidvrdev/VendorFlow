@@ -29,19 +29,19 @@ Status in this file: **(planned)** until the phase that implements it marks it *
 - `GET /actuator/health` — liveness/readiness (no details exposed publicly). **(implemented Phase 0)**
 
 ### Auth & session (Phase 1)
-- `GET  /auth/csrf` → 204, sets `XSRF-TOKEN`
-- `POST /auth/signup` `{ email, password, fullName, organizationName }` → 201 (session started)
-- `POST /auth/login` `{ email, password }` → 200 `Me`
-- `POST /auth/logout` → 204
+- `GET  /auth/csrf` → 204, sets `XSRF-TOKEN` **(implemented)**
+- `POST /auth/signup` `{ email, password, fullName, organizationName }` → 201 `Me` (session started) **(implemented)**
+- `POST /auth/login` `{ email, password }` → 200 `Me` **(implemented)**
+- `POST /auth/logout` → 204 **(implemented)**
 - `POST /auth/verify-email` `{ token }` → 204
 - `POST /auth/resend-verification` → 204
 - `POST /auth/password-reset/request` `{ email }` → 202 (always)
 - `POST /auth/password-reset/confirm` `{ token, newPassword }` → 204
-- `GET  /me` → `{ user, activeOrganization: { id, name, role }, organizations: [...] }`
-- `POST /session/organization` `{ organizationId }` → 200 `Me` (membership verified)
+- `GET  /me` → `{ user, activeOrganization: { id, name, role }, organizations: [...] }` **(implemented)**
+- `POST /session/organization` `{ organizationId }` → 200 `Me` (membership verified) **(implemented)**
 
 ### Organization (Phase 1)
-- `GET   /organization` · `PATCH /organization` `{ name?, timeZone?, expiringWindowDays?, reminderOffsetsDays?, remindersEnabled? }`
+- `GET   /organization` · `PATCH /organization` `{ name?, timeZone?, expiringWindowDays?, reminderOffsetsDays?, remindersEnabled? }` **(implemented)**
 - `GET   /organization/members` · `PATCH /organization/members/{membershipId}` `{ role }` · `DELETE /organization/members/{membershipId}`
 - `GET   /organization/invitations` · `POST /organization/invitations` `{ email, role }` · `DELETE /organization/invitations/{id}`
 - `POST  /invitations/lookup` `{ token }` (public) · `POST /invitations/accept` `{ token, fullName?, password? }`
@@ -68,7 +68,7 @@ type Invitation = { id: string; email: string; role: Exclude<Role,"OWNER">; expi
 type InvitationLookup = { organizationName: string; role: Role; email: string; accountExists: boolean };
 ```
 Rules:
-- `signup`: `email` (valid, ≤254), `password` (12–128 chars, not a common password, not equal to email),
+- `signup`: `email` (valid, ≤254), `password` (12–128 chars **and at most 72 UTF-8 bytes** — the bcrypt limit; not a common password, not equal to email),
   `fullName` (1–100), `organizationName` (1–120). Creates user + org + OWNER membership, sets active org, starts the
   session, enqueues a verification email. Duplicate email → **409** `title: "Email already registered"`.
   (Trade-off accepted: signup reveals registration; login/reset do not.)
@@ -98,6 +98,29 @@ Rules:
   and the account exists: **409** `title: "Sign in to accept"`.
 - Rate limits (per client IP, in-process): login 10/min, signup 5/min, password-reset request 5/min,
   invitation lookup/accept 20/min, resend-verification 3/min → **429** with `Retry-After`.
+
+**Implemented in Phase 1 / B1 (auth, session, org settings) — exact client flow and details:**
+1. App start / before the first unsafe request: if there is no `XSRF-TOKEN` cookie, `GET /api/v1/auth/csrf` (204; sets
+   `XSRF-TOKEN`, readable by JS, SameSite=Lax).
+2. Every unsafe request (POST/PATCH/PUT/DELETE, **including login, signup and logout**): send header `X-XSRF-TOKEN` with
+   the CURRENT value of the `XSRF-TOKEN` cookie (read it right before sending). The token is a plain string, not masked.
+3. `POST /auth/login` and `POST /auth/signup` **rotate** both cookies: the response sets a new `VF_SESSION` (HttpOnly,
+   never readable by JS) and a new `XSRF-TOKEN`. Always re-read the cookie after these calls; a token read before login
+   is rejected (403) afterwards.
+4. Logout clears `VF_SESSION`; `XSRF-TOKEN` stays valid. A 401 on any call means the session is gone → go to login.
+- Login failure → 401 `{ title: "Authentication failed", detail: "Invalid email or password." }` (also when locked).
+  Lockout: 5 consecutive failures → 15 minutes.
+- Signup/field errors → 400 with `errors: [{ field, message }]`; password problems use `field: "password"`
+  (length, > 72 bytes, equals email, common password). **Deviation from the earlier draft: a password may be at most 72
+  UTF-8 bytes** (bcrypt limit) in addition to 12–128 characters; the frontend should cap input at 72 characters.
+- Duplicate email → 409 `title: "Email already registered"`.
+- Tenant endpoint without an active org → 403 `title: "No active organization"`; without permission → 403
+  `title: "Access denied"`; unauthenticated → 401 `title: "Authentication required"`.
+- `PATCH /organization`: all fields optional (null/absent = unchanged); unknown fields (e.g. `organizationId`) are ignored.
+  Field errors: `name` (blank / > 120), `timeZone` (not an IANA id), `expiringWindowDays`, `reminderOffsetsDays`
+  (size 1–5, each 1–180, duplicates).
+- `POST /auth/resend-verification` requires a logged-in session (it takes no body); the other `/auth/*` endpoints
+  listed above are public. Only `csrf`, `signup`, `login`, `logout`, `verify-email`, `password-reset/**` are public.
 
 ### Vendors (Phase 2)
 - `GET    /vendors?q=&status=&compliance=&category=&page=&size=&sort=` → page of `VendorSummary` (incl. compliance)

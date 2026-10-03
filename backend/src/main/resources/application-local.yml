@@ -4,3 +4,8 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vendorflow}
     username: ${DATABASE_USERNAME:vendorflow}
     password: ${DATABASE_PASSWORD:vendorflow-local}
+app:
+  base-url: ${APP_BASE_URL:http://localhost:3000}
+  security:
+    # Local-only value; prod requires APP_IP_HASH_SECRET.
+    ip-hash-secret: ${APP_IP_HASH_SECRET:local-dev-only-ip-hash-secret-change-me}
