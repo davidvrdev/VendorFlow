@@ -1,11 +1,13 @@
 // The URL is the single source of truth for the vendors list. These pure helpers parse it (never trusting
 // it: unknown values fall back to defaults so a hand-edited URL cannot trigger a backend 400) and build it.
 
+import { VENDOR_COMPLIANCES, type VendorCompliance } from "@/features/compliance/types";
+
 export const PAGE_SIZE = 25;
 export const STATUS_FILTERS = ["ACTIVE", "INACTIVE", "ALL"] as const;
 export type StatusFilter = (typeof STATUS_FILTERS)[number];
 
-export const SORT_FIELDS = ["companyName", "createdAt", "updatedAt"] as const;
+export const SORT_FIELDS = ["companyName", "createdAt", "updatedAt", "compliance", "nextExpiration"] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
 export type SortDirection = "asc" | "desc";
 export type SortValue = `${SortField},${SortDirection}`;
@@ -18,12 +20,14 @@ export interface VendorListState {
   q: string;
   status: StatusFilter;
   category: string;
+  /** "" = all. */
+  compliance: VendorCompliance | "";
   sort: SortValue;
   /** 1-based (the API is 0-based; see toApiQuery). */
   page: number;
 }
 
-export const DEFAULT_LIST_STATE: VendorListState = { q: "", status: "ACTIVE", category: "", sort: DEFAULT_SORT, page: 1 };
+export const DEFAULT_LIST_STATE: VendorListState = { q: "", status: "ACTIVE", category: "", compliance: "", sort: DEFAULT_SORT, page: 1 };
 
 type RawParams = Record<string, string | string[] | undefined>;
 
@@ -39,11 +43,13 @@ function isSortValue(value: string): value is SortValue {
 export function parseListState(params: RawParams): VendorListState {
   const status = first(params.status).toUpperCase();
   const sort = first(params.sort);
+  const compliance = first(params.compliance).toUpperCase();
   const page = Number.parseInt(first(params.page), 10);
   return {
     q: first(params.q).trim().slice(0, MAX_Q),
     status: (STATUS_FILTERS as readonly string[]).includes(status) ? (status as StatusFilter) : "ACTIVE",
     category: first(params.category).trim().slice(0, MAX_CATEGORY),
+    compliance: (VENDOR_COMPLIANCES as readonly string[]).includes(compliance) ? (compliance as VendorCompliance) : "",
     sort: isSortValue(sort) ? sort : DEFAULT_SORT,
     page: Number.isFinite(page) && page >= 1 ? page : 1,
   };
@@ -55,6 +61,7 @@ export function toSearchString(state: VendorListState): string {
   if (state.q) params.set("q", state.q);
   if (state.status !== "ACTIVE") params.set("status", state.status);
   if (state.category) params.set("category", state.category);
+  if (state.compliance) params.set("compliance", state.compliance);
   if (state.sort !== DEFAULT_SORT) params.set("sort", state.sort);
   if (state.page > 1) params.set("page", String(state.page));
   const text = params.toString();
@@ -79,7 +86,8 @@ export function sortDirectionFor(state: VendorListState, field: SortField): Sort
 export function nextSort(state: VendorListState, field: SortField): SortValue {
   const current = sortDirectionFor(state, field);
   if (current) return `${field},${current === "asc" ? "desc" : "asc"}`;
-  return field === "companyName" ? `${field},asc` : `${field},desc`;
+  // Names and the worst-first / soonest-first columns start ascending; recency columns start newest first.
+  return field === "createdAt" || field === "updatedAt" ? `${field},desc` : `${field},asc`;
 }
 
 export function ariaSortFor(state: VendorListState, field: SortField): "ascending" | "descending" | "none" {
@@ -89,7 +97,7 @@ export function ariaSortFor(state: VendorListState, field: SortField): "ascendin
 
 /** True when no filter narrows the list (sort and page do not count). */
 export function hasDefaultFilters(state: VendorListState): boolean {
-  return state.q === "" && state.category === "" && state.status === "ACTIVE";
+  return state.q === "" && state.category === "" && state.compliance === "" && state.status === "ACTIVE";
 }
 
 /** Query string for GET /vendors (page is 0-based there). */
@@ -98,6 +106,7 @@ export function toApiQuery(state: VendorListState): string {
   if (state.q) params.set("q", state.q);
   params.set("status", state.status);
   if (state.category) params.set("category", state.category);
+  if (state.compliance) params.set("compliance", state.compliance);
   params.set("sort", state.sort);
   params.set("page", String(state.page - 1));
   params.set("size", String(PAGE_SIZE));

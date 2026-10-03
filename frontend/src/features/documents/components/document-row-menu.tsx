@@ -10,9 +10,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PRIMARY_ACTION_LABELS, primaryAction } from "@/features/compliance/actions";
+import type { RequirementStatus } from "@/features/compliance/types";
 import type { Role } from "@/features/organization/types";
 import { errorMessage } from "@/lib/forms/api-errors";
 import { archiveDocument, downloadHref, reviewDocument } from "../api";
@@ -33,6 +36,8 @@ interface DocumentRowMenuProps {
   document: DocumentSummary | null;
   /** False for requirements whose type was deactivated: no uploads, everything else still works. */
   typeActive?: boolean;
+  /** Requirement status (backend-computed): decides which action is listed first. */
+  status?: RequirementStatus;
   /** Active types, for the upload dialog's picker. */
   documentTypes: DocumentType[];
   currentByType: Record<string, DocumentSummary>;
@@ -49,6 +54,7 @@ export function DocumentRowMenu({
   typeId,
   document,
   typeActive = true,
+  status,
   documentTypes,
   currentByType,
 }: DocumentRowMenuProps) {
@@ -81,6 +87,26 @@ export function DocumentRowMenu({
 
   const showReview = actions.approve || actions.reject;
   const showUpload = actions.upload || actions.replace;
+  const primary = status ? primaryAction(status, role) : null;
+  const reviewFirst = primary === "review" && showReview;
+  const uploadLabel = primary === "upload-renewal" ? PRIMARY_ACTION_LABELS[primary] : primary === "upload" ? "Upload" : actions.replace ? "Replace" : "Upload";
+
+  const reviewItems = (
+    <>
+      {actions.approve ? (
+        <DropdownMenuItem onSelect={() => void approve()}>
+          <CheckCircle2 aria-hidden="true" />
+          Approve
+        </DropdownMenuItem>
+      ) : null}
+      {actions.reject ? (
+        <DropdownMenuItem onSelect={() => setDialog("reject")}>
+          <XCircle aria-hidden="true" />
+          Reject…
+        </DropdownMenuItem>
+      ) : null}
+    </>
+  );
 
   return (
     <>
@@ -91,10 +117,17 @@ export function DocumentRowMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {reviewFirst ? (
+            <>
+              <DropdownMenuLabel>{PRIMARY_ACTION_LABELS.review}</DropdownMenuLabel>
+              {reviewItems}
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           {showUpload ? (
             <DropdownMenuItem onSelect={() => setDialog("upload")}>
               <Upload aria-hidden="true" />
-              {actions.replace ? "Replace" : "Upload"}
+              {uploadLabel}
             </DropdownMenuItem>
           ) : null}
           {actions.download && document ? (
@@ -106,18 +139,11 @@ export function DocumentRowMenu({
               </a>
             </DropdownMenuItem>
           ) : null}
-          {showReview ? <DropdownMenuSeparator /> : null}
-          {actions.approve ? (
-            <DropdownMenuItem onSelect={() => void approve()}>
-              <CheckCircle2 aria-hidden="true" />
-              Approve
-            </DropdownMenuItem>
-          ) : null}
-          {actions.reject ? (
-            <DropdownMenuItem onSelect={() => setDialog("reject")}>
-              <XCircle aria-hidden="true" />
-              Reject…
-            </DropdownMenuItem>
+          {showReview && !reviewFirst ? (
+            <>
+              <DropdownMenuSeparator />
+              {reviewItems}
+            </>
           ) : null}
           {actions.editDates || actions.archive ? <DropdownMenuSeparator /> : null}
           {actions.editDates ? (

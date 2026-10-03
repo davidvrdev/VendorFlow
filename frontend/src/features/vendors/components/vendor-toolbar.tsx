@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VENDOR_COMPLIANCES, type VendorCompliance } from "@/features/compliance/types";
 import {
   STATUS_FILTERS,
   toSearchString,
@@ -18,6 +19,12 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 300;
 const ALL_CATEGORIES = "__all__";
+const ALL_COMPLIANCE = "__all__";
+const COMPLIANCE_LABELS: Record<VendorCompliance, string> = {
+  NON_COMPLIANT: "Non-compliant",
+  ATTENTION: "Needs attention",
+  COMPLIANT: "Compliant",
+};
 const STATUS_LABELS: Record<StatusFilter, string> = { ACTIVE: "Active", INACTIVE: "Inactive", ALL: "All" };
 
 interface VendorToolbarProps {
@@ -91,6 +98,28 @@ export function VendorToolbar({ state, categories, canCreate }: VendorToolbarPro
             {STATUS_FILTERS.map((status) => (
               <SelectItem key={status} value={status}>
                 {STATUS_LABELS[status]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="vendor-compliance">Compliance</Label>
+        <Select
+          value={state.compliance || ALL_COMPLIANCE}
+          onValueChange={(value) =>
+            navigate(withFilterChange(state, { q: search.trim(), compliance: value === ALL_COMPLIANCE ? "" : (value as VendorCompliance) }))
+          }
+        >
+          <SelectTrigger id="vendor-compliance" className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_COMPLIANCE}>All</SelectItem>
+            {VENDOR_COMPLIANCES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {COMPLIANCE_LABELS[value]}
               </SelectItem>
             ))}
           </SelectContent>

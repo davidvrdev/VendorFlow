@@ -20,10 +20,10 @@ const vendor: Pick<VendorDetail, "id" | "companyName" | "requirements" | "otherD
   id: "v-1",
   companyName: "Acme",
   requirements: [
-    { documentTypeId: "t1", code: "COI", name: "Certificate of Insurance", hasExpiration: true, currentDocument: doc({ originalFilename: "coi-2030.pdf" }) },
-    { documentTypeId: "t2", code: "W9", name: "W-9", hasExpiration: false, currentDocument: null },
+    { documentTypeId: "t1", code: "COI", name: "Certificate of Insurance", hasExpiration: true, currentDocument: doc({ originalFilename: "coi-2030.pdf" }), status: "OK", daysUntilExpiration: 400, active: true },
+    { documentTypeId: "t2", code: "W9", name: "W-9", hasExpiration: false, currentDocument: null, status: "MISSING", daysUntilExpiration: null, active: true },
     // Type 't9' is not in the active list: an inactive requirement.
-    { documentTypeId: "t9", code: "OLD", name: "Legacy Form", hasExpiration: false, currentDocument: null },
+    { documentTypeId: "t9", code: "OLD", name: "Legacy Form", hasExpiration: false, currentDocument: null, status: "OK", daysUntilExpiration: null, active: false },
   ],
   otherDocuments: [],
 };
@@ -40,8 +40,38 @@ describe("RequirementsCard as a documents table", () => {
     const table = screen.getByRole("table", { name: /Required documents for Acme/ });
     expect(within(table).getByText("coi-2030.pdf")).toBeInTheDocument();
     expect(within(table).getByText("Pending review")).toBeInTheDocument();
-    expect(within(table).getAllByText("Missing")).toHaveLength(2);
-    expect(within(table).getByText("Inactive type: ignored for compliance.")).toBeInTheDocument();
+    expect(within(table).getAllByText("Missing")).toHaveLength(1); // the W-9 status badge; the inactive row has none
+    expect(within(table).getByText("Ignored for compliance")).toBeInTheDocument();
+  });
+
+  it("shows the status right after the type with the days text", () => {
+    const soon = { ...vendor, requirements: [{ ...vendor.requirements[0], status: "EXPIRING" as const, daysUntilExpiration: 12 }] };
+    render(<RequirementsCard vendor={soon} documentTypes={types} role="VIEWER" />);
+    const row = screen.getByRole("row", { name: /Certificate of Insurance/ });
+    expect(within(row).getByText("Expiring soon")).toBeInTheDocument();
+    expect(within(row).getByText("Expires in 12 days")).toBeInTheDocument();
+    expect(within(row).getAllByRole("cell")[1]).toHaveTextContent("Expiring soon");
+  });
+
+  it("shows expired days and puts the primary action first in the menu", () => {
+    const expired = { ...vendor, requirements: [{ ...vendor.requirements[0], status: "EXPIRED" as const, daysUntilExpiration: -3 }] };
+    render(<RequirementsCard vendor={expired} documentTypes={types} role="MEMBER" />);
+    expect(screen.getByText("Expired 3 days ago")).toBeInTheDocument();
+    openMenu("Actions for Certificate of Insurance");
+    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent("Upload");
+  });
+
+  it("puts Review (approve/reject) first for REVIEW_REQUIRED and 'Upload renewal' first for EXPIRING", () => {
+    const review = { ...vendor, requirements: [{ ...vendor.requirements[0], status: "REVIEW_REQUIRED" as const }] };
+    const { unmount } = render(<RequirementsCard vendor={review} documentTypes={types} role="MEMBER" />);
+    openMenu("Actions for Certificate of Insurance");
+    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent("Approve");
+    expect(screen.getAllByText("Review")).toHaveLength(2); // column header + menu group label
+    unmount();
+    const expiring = { ...vendor, requirements: [{ ...vendor.requirements[0], status: "EXPIRING" as const, daysUntilExpiration: 5 }] };
+    render(<RequirementsCard vendor={expiring} documentTypes={types} role="MEMBER" />);
+    openMenu("Actions for Certificate of Insurance");
+    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent("Upload renewal");
   });
 
   it("shows the rejection note next to the Rejected status", () => {

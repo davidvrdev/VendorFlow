@@ -1,7 +1,9 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
+import { VendorComplianceBadge } from "@/components/vendor-compliance-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate } from "@/lib/format";
+import { compactCounts, nextExpirationLabel } from "@/features/compliance/format";
+import { formatCalendarDate, formatDate } from "@/lib/format";
 import {
   ariaSortFor,
   nextSort,
@@ -48,6 +50,8 @@ export function VendorsTable({ vendors, state }: { vendors: VendorSummary[]; sta
               Requirements
             </TableHead>
             <TableHead scope="col">Status</TableHead>
+            <SortableHead field="compliance" label="Compliance" state={state} />
+            <SortableHead field="nextExpiration" label="Next expiration" state={state} />
             <SortableHead field="updatedAt" label="Updated" state={state} />
           </TableRow>
         </TableHeader>
@@ -76,6 +80,24 @@ export function VendorsTable({ vendors, state }: { vendors: VendorSummary[]; sta
               <TableCell className="text-right tabular-nums">{vendor.requirementCount}</TableCell>
               <TableCell>
                 <VendorStatusBadge status={vendor.status} />
+              </TableCell>
+              <TableCell>
+                <div className="grid gap-1">
+                  <VendorComplianceBadge status={vendor.compliance.status} requirementCount={vendor.requirementCount} className="w-fit" />
+                  {vendor.requirementCount > 0 && compactCounts(vendor.compliance).length > 0 ? (
+                    <span className="text-xs text-muted-foreground">{compactCounts(vendor.compliance).join(" · ")}</span>
+                  ) : null}
+                </div>
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
+                {vendor.compliance.nextExpiration ? (
+                  <>
+                    <div>{formatCalendarDate(vendor.compliance.nextExpiration)}</div>
+                    <div className="text-xs text-muted-foreground">{nextExpirationLabel(vendor.compliance.daysUntilNextExpiration)}</div>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground" aria-label="No expiration">—</span>
+                )}
               </TableCell>
               <TableCell className="text-muted-foreground">{formatDate(vendor.updatedAt)}</TableCell>
             </TableRow>

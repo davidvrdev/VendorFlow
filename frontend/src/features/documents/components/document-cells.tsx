@@ -6,8 +6,8 @@ import { ReviewStatusBadge } from "./review-status";
 
 /**
  * The document-dependent cells shared by the "Required documents" and "Other documents" tables:
- * current document · issue date · expiration date · review. A Compliance status column joins them in Phase 4
- * (computed by the backend, never here).
+ * current document · issue date · expiration date · review. (The compliance status column lives in the
+ * requirements table; it is computed by the backend, never here.)
  */
 export function DocumentCells({ document }: { document: DocumentSummary | null }) {
   if (!document) {
@@ -16,7 +16,7 @@ export function DocumentCells({ document }: { document: DocumentSummary | null }
         <TableCell>
           <span className="inline-flex items-center gap-1.5 text-sm font-medium text-red-800 dark:text-red-200">
             <FileX className="size-4" aria-hidden="true" />
-            Missing
+            No document
           </span>
         </TableCell>
         <TableCell className="text-muted-foreground">

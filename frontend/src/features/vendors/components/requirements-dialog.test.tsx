@@ -113,7 +113,7 @@ describe("RequirementsCard", () => {
   const vendor: Pick<VendorDetail, "id" | "companyName" | "requirements" | "otherDocuments"> = {
     id: "v-1",
     companyName: "Acme",
-    requirements: [{ documentTypeId: "t1", code: "COI", name: "Certificate of Insurance", hasExpiration: true, currentDocument: null }],
+    requirements: [{ documentTypeId: "t1", code: "COI", name: "Certificate of Insurance", hasExpiration: true, currentDocument: null, status: "MISSING", daysUntilExpiration: null, active: true }],
     otherDocuments: [],
   };
 

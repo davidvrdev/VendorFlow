@@ -1,4 +1,5 @@
 // Mirrors docs/API.md "Phase 2 + 3 contract details". Keep in sync with the backend DTOs.
+import type { ComplianceSummary, RequirementStatus } from "@/features/compliance/types";
 import type { DocumentSummary } from "@/features/documents/types";
 
 export type { DocumentType } from "@/features/documents/types";
@@ -14,6 +15,8 @@ export interface VendorSummary {
   category: string | null;
   status: VendorStatus;
   requirementCount: number;
+  /** Phase 4: computed by the backend; the client never derives status. */
+  compliance: ComplianceSummary;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,6 +28,12 @@ export interface VendorRequirement {
   hasExpiration: boolean;
   /** Phase 3: the CURRENT document for this requirement, or null when there is none. */
   currentDocument: DocumentSummary | null;
+  /** Phase 4 */
+  status: RequirementStatus;
+  /** Negative when expired; null when the type has no expiration or the date is unknown. */
+  daysUntilExpiration: number | null;
+  /** False when the document type is inactive: ignored for compliance. */
+  active: boolean;
 }
 
 export interface VendorDetail extends VendorSummary {

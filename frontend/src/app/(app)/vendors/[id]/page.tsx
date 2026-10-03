@@ -2,6 +2,7 @@ import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { VendorComplianceBadge } from "@/components/vendor-compliance-badge";
 import { PageHeader } from "@/components/page-header";
 import { DocumentHistory } from "@/features/documents/components/document-history";
 import { OtherDocumentsCard } from "@/features/documents/components/other-documents-card";
@@ -11,6 +12,7 @@ import { VendorActions } from "@/features/vendors/components/vendor-actions";
 import { VendorDetailsCard } from "@/features/vendors/components/vendor-details-card";
 import { VendorStatusBadge } from "@/features/vendors/components/vendor-status-badge";
 import { asNotFound, fetchDocumentTypes, fetchVendorHistory, fetchVendorOrNotFound } from "@/features/vendors/server";
+import { complianceSummaryText } from "@/features/compliance/format";
 import { requireMe } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Vendor" };
@@ -50,7 +52,13 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
       </Link>
       <PageHeader title={vendor.companyName} actions={<VendorActions vendor={vendor} role={role} />} />
       <div className="-mt-6 mb-8">
-        <VendorStatusBadge status={vendor.status} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <VendorStatusBadge status={vendor.status} />
+          <VendorComplianceBadge status={vendor.compliance.status} requirementCount={vendor.requirementCount} />
+          {vendor.requirementCount > 0 ? (
+            <span className="text-sm text-muted-foreground">{complianceSummaryText(vendor.compliance)}</span>
+          ) : null}
+        </div>
       </div>
       <div className="grid max-w-4xl gap-6">
         <VendorDetailsCard vendor={vendor} />

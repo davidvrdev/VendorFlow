@@ -1,5 +1,7 @@
+import { ComplianceStatusBadge } from "@/components/compliance-status-badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { expirationText } from "@/features/compliance/format";
 import { DocumentCells } from "@/features/documents/components/document-cells";
 import { DocumentRowMenu } from "@/features/documents/components/document-row-menu";
 import { UploadButton } from "@/features/documents/components/upload-button";
@@ -66,11 +68,11 @@ export function RequirementsCard({ vendor, documentTypes, role }: RequirementsCa
               <TableHeader>
                 <TableRow>
                   <TableHead scope="col">Document type</TableHead>
+                  <TableHead scope="col">Status</TableHead>
                   <TableHead scope="col">Current document</TableHead>
                   <TableHead scope="col">Issue date</TableHead>
                   <TableHead scope="col">Expiration date</TableHead>
                   <TableHead scope="col">Review</TableHead>
-                  {/* Phase 4 adds a "Compliance" column here, computed by the backend. */}
                   <TableHead scope="col" className="text-right">
                     Actions
                   </TableHead>
@@ -78,15 +80,24 @@ export function RequirementsCard({ vendor, documentTypes, role }: RequirementsCa
               </TableHeader>
               <TableBody>
                 {vendor.requirements.map((requirement) => {
-                  const inactive = !activeIds.has(requirement.documentTypeId);
+                  const inactive = !requirement.active || !activeIds.has(requirement.documentTypeId);
+                  const urgent = !inactive && (requirement.status === "MISSING" || requirement.status === "EXPIRED");
+                  const days = inactive ? null : expirationText(requirement.daysUntilExpiration);
                   return (
-                    <TableRow key={requirement.documentTypeId} className={inactive ? "bg-muted/40 text-muted-foreground" : undefined}>
+                    <TableRow key={requirement.documentTypeId} className={inactive ? "bg-muted/40 text-muted-foreground" : urgent ? "bg-red-50/50 dark:bg-red-950/20" : undefined}>
                       <TableCell className="font-medium">
                         <span>{requirement.name}</span>
                         {requirement.hasExpiration ? <span className="ml-2 text-xs font-normal text-muted-foreground"> (expires)</span> : null}
+                      </TableCell>
+                      <TableCell>
                         {inactive ? (
-                          <p className="text-xs font-normal">Inactive type: ignored for compliance.</p>
-                        ) : null}
+                          <span className="text-xs">Ignored for compliance</span>
+                        ) : (
+                          <div className="grid gap-1">
+                            <ComplianceStatusBadge status={requirement.status} className="w-fit" />
+                            {days ? <span className="text-xs text-muted-foreground">{days}</span> : null}
+                          </div>
+                        )}
                       </TableCell>
                       <DocumentCells document={requirement.currentDocument} />
                       <TableCell className="text-right">
@@ -98,6 +109,7 @@ export function RequirementsCard({ vendor, documentTypes, role }: RequirementsCa
                           typeId={requirement.documentTypeId}
                           document={requirement.currentDocument}
                           typeActive={!inactive}
+                          status={inactive ? undefined : requirement.status}
                           documentTypes={documentTypes}
                           currentByType={currentByType}
                         />

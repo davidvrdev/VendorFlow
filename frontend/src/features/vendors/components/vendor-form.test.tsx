@@ -21,6 +21,7 @@ const created: VendorDetail = {
   category: null,
   status: "ACTIVE",
   requirementCount: 3,
+  compliance: { status: "COMPLIANT", missing: 0, expired: 0, expiring: 0, reviewRequired: 0, ok: 3, nextExpiration: null, daysUntilNextExpiration: null },
   createdAt: "2030-01-01T00:00:00Z",
   updatedAt: "2030-01-01T00:00:00Z",
   notes: null,
