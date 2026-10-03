@@ -3,15 +3,16 @@
 _Last updated: 2026-10-03 (session 1)_
 
 ## Current Status
-Phases 0–4 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents, Compliance). Phase 5 (Dashboard) **starting**.
+Phases 0–5 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents, Compliance, Dashboard). Phase 6 (Notifications) **starting**.
 Users can manage organizations/members, vendors, required document types, and upload/review/archive/download
-vendor documents, and see derived compliance per requirement and per vendor (org time zone) with filters/sorting.
+vendor documents, see derived compliance per requirement and per vendor, and work from a prioritized dashboard.
 
 ## Current Sprint
-Phase 5 — Dashboard. Contract: `docs/API.md` § "Phase 5 contract details" (authoritative).
-Scope: `GET /dashboard/summary` + `GET /dashboard/attention` reusing ONE shared per-requirement SQL builder (extracted
-from the Phase 4 vendor list query); performance test with 500 vendors; UI: dashboard with summary tiles linking to
-filtered vendor lists and a prioritized "Needs attention" list with one-click actions; empty/onboarding states.
+Phase 6 — Notifications. Contract: `docs/API.md` § "Phase 6 contract details" (authoritative).
+Scope: Resend `EmailSender` (HTTP, idempotency key, retry classification; tested against a mock server — real send
+pending the owner's API key + verified domain), expiry reminder ledger job (org time zone, configured offsets,
+idempotent), daily compliance digest to verified OWNER/ADMIN, manual "Request document" email to the vendor contact,
+email activity log for owners/admins; UI for request + activity + reminder settings.
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
@@ -25,9 +26,11 @@ filtered vendor lists and a prioritized "Needs attention" list with one-click ac
   header-only CSRF; UI for all; security review + fixes.
 - Phase 4: pure ComplianceCalculator + single-query SQL aggregation with 38 shared Java/SQL vectors, org time zone
   "today", compliance filter/sorts, per-requirement status and days to expiry, next-action-first UI.
+- Phase 5: dashboard summary + prioritized attention list (one shared compliance SQL builder), 500-vendor perf test
+  (~100–160 ms), one-click upload/renew/review from the dashboard.
 
 ## In Progress
-- Phase 5 (Dashboard).
+- Phase 6 (Notifications).
 
 ## Blocked
 - Nothing. CI has never run (no git remote) — owner must create the GitHub repo and push.
@@ -78,9 +81,9 @@ Phase 2 (vendors) closed; Phase 3 (documents) closed after upload security revie
 See `docs/SESSION_HANDOFF.md`.
 
 ## Verification (last run, 2026-10-03)
-- Backend `./mvnw verify`: **386 tests, 0 failures** (incl. 38 compliance vectors run against Java and SQL).
-- Frontend: lint ✓, typecheck ✓, **278 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
-- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **16/16** ✓ in one run (incl. compliance lifecycle).
+- Backend `./mvnw verify`: **398 tests, 0 failures** (incl. compliance vectors vs Java, list SQL and dashboard SQL; 500-vendor perf test). A full run takes ~25 min on this machine.
+- Frontend: lint ✓, typecheck ✓, **294 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
+- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **17/17** ✓ in one run (incl. dashboard).
 
 ## Git
 - Branch `main`, no remote. Phase 3 closing commits: `5f63856 security: fix Phase 3 review findings…`, `3c52019 test(e2e)…` + docs commit.

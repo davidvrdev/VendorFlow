@@ -458,6 +458,53 @@ Rules:
 - Tests: `DashboardTest` (invariants, exclusions, ordering/tie-breaks, paging, permissions, tenant isolation, time zone),
   `ComplianceDashboardSqlTest` (shared `vectors.csv` parity vs the dashboard), `DashboardPerformanceTest` (500 vendors).
 
+### Notifications (Phase 6)
+- `POST /vendors/{id}/document-requests` `{ documentTypeId }` → 202 `DocumentRequestResult`
+- `GET  /notifications?page=&size=` → page of `NotificationView` (email activity; OWNER/ADMIN)
+
+### Phase 6 contract details — notifications (authoritative for backend + frontend)
+**Email delivery (Resend).** `ResendEmailSender` implements the existing `EmailSender` port with a plain HTTP client
+(no SDK): `POST https://api.resend.com/emails`, `Authorization: Bearer ${RESEND_API_KEY}`, `Idempotency-Key` = the
+notification id, JSON `{from, to, subject, html, text, reply_to?}` — verify the exact request/response/error format
+in Resend's official docs before coding. Selected when `app.email.provider=resend`; `LoggingEmailSender` otherwise
+(local/test). Result classification for the outbox: 2xx → SENT (store provider id); 429 / 5xx / network error →
+retryable (existing backoff); other 4xx → permanent failure → DEAD immediately (no retries), with a sanitized error.
+Prod startup refuses `provider=logging` (ProfileGuard) — a production app that silently doesn't email is a bug.
+The real-provider path stays **unverified until the owner supplies a Resend API key and a verified sending domain**.
+
+**Expiry reminders (ledger).** A scheduled job (every 15 min, `app.reminders.enabled`) processes each organization
+with `reminders_enabled = true` once per org-local day, after 07:00 org time:
+- Candidates: CURRENT, non-REJECTED documents of ACTIVE vendors whose type is active and `has_expiration`.
+- EXPIRING: for each configured offset `o` in `reminder_offsets_days` with `0 ≤ expiration_date − today ≤ o`, insert a
+  `reminder` row `(document_id, 'EXPIRING', o, expiration_date)` — ON CONFLICT DO NOTHING.
+- EXPIRED: `expiration_date < today` → `(document_id, 'EXPIRED', 0, expiration_date)` — once per expiration date.
+- New ledger rows (inserted in this run) feed the digest; a renewed document (new expiration date) naturally restarts
+  the thresholds. Re-runs and concurrent instances never duplicate (unique constraint).
+- Reuse `RequirementStatusSql` / `ComplianceContextService` — no second implementation of "today" or of statuses.
+
+**Daily digest.** After the ledger step, if the org has new ledger rows not yet digested, enqueue ONE
+`COMPLIANCE_DIGEST` per recipient: OWNER/ADMIN members with a verified email. Idempotency key
+`digest:{orgId}:{userId}:{orgLocalDate}`. Content: newly expired documents, newly crossed expiring thresholds (each
+document listed once, with vendor, type, expiration date, days left), the current count of missing documents, and a
+link to `{APP_BASE_URL}/dashboard`. Nothing is sent when there is nothing new. Ledger rows record `digested_at`.
+Members opting in to digests is deferred (needs a preference model).
+
+**Document request.** `POST /vendors/{id}/document-requests` (`VENDORS_WRITE`): vendor ACTIVE with an `email`
+(else 422 `title: "Vendor has no email"`), `documentTypeId` = active type of the org (else 400 field). Enqueues
+`DOCUMENT_REQUEST` to the vendor contact with `reply_to` = the requesting user's email; subject
+"{Org name} requests your {Document type}". At most one request per (vendor, type) per org-local day: idempotency
+key `docreq:{vendorId}:{typeId}:{orgLocalDate}`; a repeat → 409 `title: "Already requested today"`. Audit
+`vendor.document_requested` (shows in vendor history). Rate limit 30/min per user. Response:
+`{ requestedAt: string; recipientEmail: string }`. No upload link yet (vendor portal is Phase 14).
+
+**Email activity.** `GET /notifications` (OWNER/ADMIN; tenant-scoped; newest first; default 25, max 100):
+`NotificationView = { id; kind; recipientEmail; status: "PENDING"|"SENDING"|"SENT"|"FAILED"|"DEAD"; attempts;
+lastError: string | null; createdAt; sentAt: string | null }`. Account emails (verification/reset — no org) never
+appear. Never expose payloads or tokens.
+
+**Migrations.** `reminder` table per DATABASE.md plus `digested_at timestamptz NULL`; any other column needed (e.g.
+`organization.last_reminder_run_date`) — add and document in DATABASE.md.
+
 ### CSV (Phase 7)
 - `GET  /vendors/export.csv`
 - `POST /vendors/import/preview` multipart `{ file }` → `{ importId, rows: [...], errors: [...], summary }`

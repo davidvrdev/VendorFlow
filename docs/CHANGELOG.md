@@ -27,6 +27,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
   vendor status (Compliant, Needs attention, Non-compliant) derived live in the organization's time zone;
   compliance column, filter and sorting in the vendor list; status and days to expiry per requirement.
 
+- **Phase 5 — Dashboard**: summary of active, compliant, attention and non-compliant vendors plus missing/expired/
+  expiring/to-review documents, and a prioritized "Needs attention" list with one-click upload, renewal and review.
+
 ### Security
 - Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
   atomic lockout, fail-closed production configuration, control-character rejection in names, per-recipient
