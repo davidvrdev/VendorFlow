@@ -79,17 +79,48 @@ describe("RequirementsDialog", () => {
   });
 });
 
+describe("RequirementsDialog with inactive requirements", () => {
+  afterEach(() => {
+    vi.stubGlobal("fetch", undefined);
+    document.cookie = "XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+  });
+
+  it("shows them disabled with a note and never sends their ids", async () => {
+    document.cookie = "XSRF-TOKEN=t; path=/";
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <RequirementsDialog
+        vendorId="v-1"
+        companyName="Acme"
+        documentTypes={types}
+        currentIds={["t1", "old"]}
+        inactiveRequirements={[{ id: "old", name: "Legacy Form" }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit requirements" }));
+    const legacy = await screen.findByRole("checkbox", { name: /Legacy Form/ });
+    expect(legacy).toBeDisabled();
+    expect(screen.getByText(/Inactive type, ignored for compliance/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save requirements" }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ documentTypeIds: ["t1"] });
+  });
+});
+
 describe("RequirementsCard", () => {
-  const vendor: Pick<VendorDetail, "id" | "companyName" | "requirements"> = {
+  const vendor: Pick<VendorDetail, "id" | "companyName" | "requirements" | "otherDocuments"> = {
     id: "v-1",
     companyName: "Acme",
-    requirements: [{ documentTypeId: "t1", code: "COI", name: "Certificate of Insurance", hasExpiration: true }],
+    requirements: [{ documentTypeId: "t1", code: "COI", name: "Certificate of Insurance", hasExpiration: true, currentDocument: null }],
+    otherDocuments: [],
   };
 
-  it("lists requirements with an Expires hint", () => {
+  it("lists requirements with an expiry hint", () => {
     render(<RequirementsCard vendor={vendor} documentTypes={types} role="VIEWER" />);
     expect(screen.getByText("Certificate of Insurance")).toBeInTheDocument();
-    expect(screen.getByText("Expires")).toBeInTheDocument();
+    expect(screen.getByText("(expires)")).toBeInTheDocument();
   });
 
   it("says so when nothing is required", () => {

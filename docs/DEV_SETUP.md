@@ -62,6 +62,9 @@ Notes:
   `next-themes` dependencies to package.json: remove them (`npm uninstall cn next-themes`) and keep `@/lib/utils` imports.
 - Next 16 uses `src/proxy.ts` (not middleware.ts). It only redirects anonymous visitors of app pages to `/login` (UX);
   `requireMe()` in `(app)/layout.tsx` and the backend are authoritative. Keep its `matcher` in sync with `src/app/(app)`.
+- **Upload size through the rewrite**: Next 16 buffers every request body (rewrites included) up to
+  `experimental.proxyClientMaxBodySize` (default 10 MB) and **silently truncates** the rest. `next.config.ts` sets it
+  to `16mb` (15 MB file cap + multipart overhead). If the backend upload limit changes, change both.
 - Full-stack E2E (`e2e/auth.spec.ts`) is skipped unless `E2E_FULLSTACK=1` and backend + Postgres are running.
 - If `tsc` complains about stale `.next/dev/types` after a route is removed/moved, delete `frontend/.next/dev/types`.
 

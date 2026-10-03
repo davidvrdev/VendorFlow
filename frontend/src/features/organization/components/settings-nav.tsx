@@ -9,12 +9,16 @@ const ITEMS = [
   { href: "/settings/members", label: "Members" },
 ];
 
-export function SettingsNav() {
+// Cosmetic: the page itself redirects roles without REQUIREMENTS_MANAGE and the API enforces it.
+const DOCUMENT_TYPES_ITEM = { href: "/settings/document-types", label: "Document types" };
+
+export function SettingsNav({ canManageDocumentTypes = false }: { canManageDocumentTypes?: boolean }) {
+  const items = canManageDocumentTypes ? [...ITEMS, DOCUMENT_TYPES_ITEM] : ITEMS;
   const pathname = usePathname();
   return (
     <nav aria-label="Settings" className="mb-8 border-b">
       <ul className="-mb-px flex gap-4">
-        {ITEMS.map(({ href, label }) => {
+        {items.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <li key={href}>

@@ -63,3 +63,46 @@ describe("describeHistoryEvent", () => {
     expect(describeHistoryEvent(event("vendor.teleported")).label).toBe("Activity recorded");
   });
 });
+
+describe("describeHistoryEvent: document events", () => {
+  const names = { COI: "Certificate of Insurance" };
+  const meta = (value: unknown) => value as HistoryEvent["changes"];
+
+  it("labels each document action even without metadata", () => {
+    expect(describeHistoryEvent(event("document.uploaded")).label).toBe("Document uploaded");
+    expect(describeHistoryEvent(event("document.superseded")).label).toBe("Document replaced by a newer upload");
+    expect(describeHistoryEvent(event("document.archived")).label).toBe("Document archived");
+    expect(describeHistoryEvent(event("document.downloaded")).label).toBe("Document downloaded");
+    expect(describeHistoryEvent(event("document.reviewed")).label).toBe("Document reviewed");
+    expect(describeHistoryEvent(event("document.dates_changed")).label).toBe("Document dates changed");
+  });
+
+  it("names the document type and file when the metadata has them (flat or before/after shape)", () => {
+    const flat = meta({ filename: "coi.pdf", typeCode: "COI" });
+    expect(describeHistoryEvent(event("document.uploaded", flat), names).details).toEqual(["Certificate of Insurance: coi.pdf"]);
+    const wrapped = { originalFilename: { before: null, after: "coi.pdf" } };
+    expect(describeHistoryEvent(event("document.uploaded", wrapped)).details).toEqual(["coi.pdf"]);
+  });
+
+  it("shows approve/reject decisions and the rejection note", () => {
+    expect(describeHistoryEvent(event("document.reviewed", meta({ decision: "APPROVED" }))).label).toBe("Document approved");
+    const rejected = describeHistoryEvent(event("document.reviewed", meta({ decision: { before: null, after: "REJECTED" }, note: "Illegible scan" })));
+    expect(rejected.label).toBe("Document rejected");
+    expect(rejected.details).toContain("Note: Illegible scan");
+  });
+
+  it("lists date changes", () => {
+    const result = describeHistoryEvent(
+      event("document.dates_changed", {
+        expirationDate: { before: "2030-01-01", after: "2031-01-01" },
+        issueDate: { before: null, after: "2030-01-01" },
+      }),
+    );
+    expect(result.details).toEqual(["Issue date: empty → 2030-01-01", "Expiration date: 2030-01-01 → 2031-01-01"]);
+  });
+
+  it("never throws on unexpected shapes", () => {
+    const weird = meta({ decision: 42, note: {}, filename: ["x"] });
+    expect(describeHistoryEvent(event("document.reviewed", weird)).label).toBe("Document reviewed");
+  });
+});

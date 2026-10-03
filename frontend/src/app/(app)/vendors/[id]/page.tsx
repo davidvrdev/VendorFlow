@@ -3,8 +3,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
+import { DocumentHistory } from "@/features/documents/components/document-history";
+import { OtherDocumentsCard } from "@/features/documents/components/other-documents-card";
 import { HistoryCard } from "@/features/vendors/components/history-card";
-import { RequirementsCard } from "@/features/vendors/components/requirements-card";
+import { currentDocumentsByType, RequirementsCard } from "@/features/vendors/components/requirements-card";
 import { VendorActions } from "@/features/vendors/components/vendor-actions";
 import { VendorDetailsCard } from "@/features/vendors/components/vendor-details-card";
 import { VendorStatusBadge } from "@/features/vendors/components/vendor-status-badge";
@@ -36,6 +38,8 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
     redirect(`/vendors/${encodeURIComponent(id)}?historyPage=${Math.max(history.totalPages, 1)}#history`);
   }
 
+  // Changes whenever the set of current documents changes, so an open history list reloads after uploads/archives.
+  const documentsVersion = [...vendor.requirements.flatMap((r) => (r.currentDocument ? [r.currentDocument.id] : [])), ...vendor.otherDocuments.map((d) => d.id)].join(",");
   const typeNames = Object.fromEntries(documentTypes.map((type) => [type.code, type.name]));
 
   return (
@@ -51,6 +55,8 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
       <div className="grid max-w-4xl gap-6">
         <VendorDetailsCard vendor={vendor} />
         <RequirementsCard vendor={vendor} documentTypes={documentTypes} role={role} />
+        <OtherDocumentsCard vendor={vendor} documentTypes={documentTypes} currentByType={currentDocumentsByType(vendor)} role={role} />
+        <DocumentHistory vendorId={vendor.id} version={documentsVersion} />
         <HistoryCard
           events={history.items}
           typeNames={typeNames}

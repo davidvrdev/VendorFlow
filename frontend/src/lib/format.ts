@@ -16,3 +16,29 @@ export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" : `${dateTimeFormat.format(date)} UTC`;
 }
+
+/** "850 B", "12 KB", "1.4 MB" (1024-based, like the 15 MB cap). */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10} MB`;
+}
+
+/**
+ * Shorten a long filename in the middle, keeping the extension visible ("very-long-na….pdf").
+ * Display only: render the full name in a `title`.
+ */
+export function truncateFilename(name: string, max = 36): string {
+  if (name.length <= max) return name;
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 && name.length - dot <= 6 ? name.slice(dot) : "";
+  const keep = Math.max(max - extension.length - 1, 1);
+  return `${name.slice(0, keep)}…${extension}`;
+}
+
+/** yyyy-MM-dd (a calendar date without time zone) as "Jan 5, 2030"; empty string when missing/invalid. */
+export function formatCalendarDate(date: string | null | undefined): string {
+  return date ? formatDate(date) : "";
+}

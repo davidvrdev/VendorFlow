@@ -57,6 +57,72 @@ function requirementCodes(changes: HistoryEvent["changes"]): { added: string[]; 
   return { added: [], removed: [] };
 }
 
+
+/**
+ * Document events (docs/API.md Phase 3 only lists their audit actions, not the exact metadata shape), so everything
+ * read here is optional and has a fallback. Assumed: values live either flat (`changes.decision = "APPROVED"`) or as
+ * `{before, after}` entries under keys like decision, note, filename/originalFilename, typeCode/documentTypeCode,
+ * issueDate, expirationDate. Unknown shapes still yield a readable label with no details.
+ */
+function metaValue(changes: HistoryEvent["changes"], keys: string[]): unknown {
+  if (!changes) return undefined;
+  for (const key of keys) {
+    const entry = (changes as Record<string, unknown>)[key];
+    if (entry === undefined) continue;
+    if (entry && typeof entry === "object" && !Array.isArray(entry) && ("after" in entry || "before" in entry)) {
+      const { before, after } = entry as { before?: unknown; after?: unknown };
+      return after ?? before;
+    }
+    return entry;
+  }
+  return undefined;
+}
+
+const asText = (value: unknown): string | undefined => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined);
+
+function documentLine(changes: HistoryEvent["changes"], typeNames: Record<string, string>): string[] {
+  const filename = asText(metaValue(changes, ["originalFilename", "filename", "fileName"]));
+  const code = asText(metaValue(changes, ["documentTypeCode", "typeCode", "documentType", "type"]));
+  const type = code ? (typeNames[code] ?? code) : undefined;
+  if (filename && type) return [`${type}: ${filename}`];
+  if (filename || type) return [(filename ?? type) as string];
+  return [];
+}
+
+const DATE_FIELD_LABELS: Record<string, string> = { issueDate: "Issue date", expirationDate: "Expiration date" };
+
+function describeDocumentEvent(event: HistoryEvent, typeNames: Record<string, string>): HistoryDescription | null {
+  const base = documentLine(event.changes, typeNames);
+  switch (event.action) {
+    case "document.uploaded":
+      return { label: "Document uploaded", details: base };
+    case "document.superseded":
+      return { label: "Document replaced by a newer upload", details: base };
+    case "document.archived":
+      return { label: "Document archived", details: base };
+    case "document.downloaded":
+      return { label: "Document downloaded", details: base };
+    case "document.reviewed": {
+      const decision = asText(metaValue(event.changes, ["decision", "reviewStatus", "status"]))?.toUpperCase();
+      const note = asText(metaValue(event.changes, ["note", "reviewNote"]));
+      const label = decision === "APPROVED" ? "Document approved" : decision === "REJECTED" ? "Document rejected" : "Document reviewed";
+      return { label, details: [...base, ...(note ? [`Note: ${note}`] : [])] };
+    }
+    case "document.dates_changed": {
+      const changes: string[] = [];
+      for (const [field, label] of Object.entries(DATE_FIELD_LABELS)) {
+        const entry = event.changes?.[field] as { before?: unknown; after?: unknown } | undefined;
+        if (entry && typeof entry === "object" && ("before" in entry || "after" in entry)) {
+          changes.push(`${label}: ${formatValue(entry.before)} → ${formatValue(entry.after)}`);
+        }
+      }
+      return { label: "Document dates changed", details: [...base, ...changes] };
+    }
+    default:
+      return null;
+  }
+}
+
 /** Pure: turns an audit event into human-readable text. `typeNames` maps document type code -> name. */
 export function describeHistoryEvent(event: HistoryEvent, typeNames: Record<string, string> = {}): HistoryDescription {
   switch (event.action) {
@@ -80,7 +146,10 @@ export function describeHistoryEvent(event: HistoryEvent, typeNames: Record<stri
       if (removed.length > 0) parts.push(`removed ${removed.map(name).join(", ")}`);
       return { label: parts.length > 0 ? `Requirements changed: ${parts.join(", ")}` : "Requirements changed", details: [] };
     }
-    default:
+    default: {
+      const document = describeDocumentEvent(event, typeNames);
+      if (document) return document;
       return { label: "Activity recorded", details: [] };
+    }
   }
 }

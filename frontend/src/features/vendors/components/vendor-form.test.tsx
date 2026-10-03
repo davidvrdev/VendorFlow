@@ -26,6 +26,7 @@ const created: VendorDetail = {
   notes: null,
   createdBy: null,
   requirements: [],
+  otherDocuments: [],
 };
 
 function submit(companyName: string) {

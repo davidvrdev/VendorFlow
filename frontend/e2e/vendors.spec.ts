@@ -36,7 +36,7 @@ test("vendor lifecycle: create, duplicate, edit, requirements, search, deactivat
 
   // Default requirements.
   for (const name of DEFAULT_REQUIREMENTS) await expect(page.getByText(name, { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "History", exact: true })).toBeVisible();
   await expect(page.getByText("Vendor created")).toBeVisible();
 
   // Duplicate name (case-insensitive) is a field error.

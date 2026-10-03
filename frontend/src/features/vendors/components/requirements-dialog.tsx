@@ -32,9 +32,15 @@ interface RequirementsDialogProps {
   companyName: string;
   documentTypes: DocumentType[];
   currentIds: string[];
+  /**
+   * Requirements whose type was deactivated. They are listed greyed and disabled, and are NOT part of the payload:
+   * the API only accepts active type ids and drops requirements that are absent from the list (API.md Phase 2 notes),
+   * so saving removes them. Sending the ids we display therefore means the active, checked ones.
+   */
+  inactiveRequirements?: { id: string; name: string }[];
 }
 
-export function RequirementsDialog({ vendorId, companyName, documentTypes, currentIds }: RequirementsDialogProps) {
+export function RequirementsDialog({ vendorId, companyName, documentTypes, currentIds, inactiveRequirements = [] }: RequirementsDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(currentIds));
@@ -101,6 +107,20 @@ export function RequirementsDialog({ vendorId, companyName, documentTypes, curre
                   <Label htmlFor={id} className="flex-1 cursor-pointer font-normal">
                     {type.name}
                     {type.hasExpiration ? <span className="ml-2 text-xs text-muted-foreground">Expires</span> : null}
+                  </Label>
+                </div>
+              );
+            })}
+            {inactiveRequirements.map((requirement) => {
+              const id = `requirement-inactive-${requirement.id}`;
+              return (
+                <div key={requirement.id} className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
+                  <Checkbox id={id} checked disabled aria-describedby={`${id}-note`} className="mt-0.5" />
+                  <Label htmlFor={id} className="flex-1 font-normal">
+                    {requirement.name}
+                    <span id={`${id}-note`} className="block text-xs text-muted-foreground">
+                      Inactive type, ignored for compliance. Saving removes it from this vendor.
+                    </span>
                   </Label>
                 </div>
               );
