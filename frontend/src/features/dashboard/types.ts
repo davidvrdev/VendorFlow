@@ -14,6 +14,8 @@ export type AttentionAction = "UPLOAD" | "UPLOAD_RENEWAL" | "REVIEW";
 export interface AttentionItem {
   vendorId: string;
   vendorName: string;
+  /** Not in the Phase 5 contract; when the API adds it the dashboard shows the recipient and handles "no email" up front. */
+  vendorEmail?: string | null;
   documentTypeId: string;
   documentTypeName: string;
   status: Exclude<RequirementStatus, "OK">;

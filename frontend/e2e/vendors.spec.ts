@@ -49,7 +49,7 @@ test("vendor lifecycle: create, duplicate, edit, requirements, search, deactivat
 
   // Edit contact.
   await page.goto(`/vendors/${vendorId}`);
-  await page.getByRole("link", { name: "Edit" }).click();
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/vendors/${vendorId}/edit$`));
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Contact name").fill("Dana Reyes");

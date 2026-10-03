@@ -4,7 +4,7 @@ import { expect, type APIRequestContext } from "@playwright/test";
 // not through the Next proxy, because it is a test-only endpoint outside /api/v1.
 const BACKEND = "http://localhost:8080";
 
-export type MailKind = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "INVITATION";
+export type MailKind = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "INVITATION" | "DOCUMENT_REQUEST" | "COMPLIANCE_DIGEST";
 
 interface StoredMessage {
   kind: MailKind;
@@ -12,6 +12,16 @@ interface StoredMessage {
   subject: string;
   links: string[];
   receivedAt: string;
+  /** Body text, when the e2e mailbox exposes it (assumed optional). */
+  text?: string;
+  body?: string;
+  html?: string;
+}
+
+export interface MailSummary {
+  subject: string;
+  /** subject + any body fields the mailbox returned, for "mentions X" assertions. */
+  content: string;
 }
 
 /**
@@ -38,4 +48,23 @@ export async function latestLink(
     )
     .toBeGreaterThanOrEqual(minCount);
   return link;
+}
+
+/** Wait for the Nth message of `kind` to `to` and return its subject and searchable content. */
+export async function waitForMessage(request: APIRequestContext, to: string, kind: MailKind, minCount = 1): Promise<MailSummary> {
+  let latest: StoredMessage | undefined;
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get(`${BACKEND}/api/test/mailbox`, { params: { to } });
+        if (!response.ok()) return 0;
+        const messages = ((await response.json()) as StoredMessage[]).filter((m) => m.kind === kind);
+        latest = messages.at(-1);
+        return messages.length;
+      },
+      { message: `waiting for ${kind} email to ${to}`, timeout: 30_000, intervals: [300, 500, 1000] },
+    )
+    .toBeGreaterThanOrEqual(minCount);
+  const message = latest as StoredMessage;
+  return { subject: message.subject, content: [message.subject, message.text, message.body, message.html].filter(Boolean).join(" ") };
 }

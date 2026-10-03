@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { expirationText } from "@/features/compliance/format";
 import { reviewDocument } from "@/features/documents/api";
 import { RejectDialog } from "@/features/documents/components/reject-dialog";
+import { RequestFromVendor } from "@/features/notifications/components/request-from-vendor";
 import { UploadDialog } from "@/features/documents/components/upload-dialog";
 import type { DocumentType } from "@/features/documents/types";
 import type { Role } from "@/features/organization/types";
@@ -55,6 +56,17 @@ function AttentionRow({ item, role, documentTypes }: { item: AttentionItem; role
         <ComplianceStatusBadge status={item.status} />
         {expiry ? <span className="text-xs text-muted-foreground">{expiry}</span> : null}
       </div>
+      {item.action === "UPLOAD" || item.action === "UPLOAD_RENEWAL" ? (
+        <RequestFromVendor
+          vendorId={item.vendorId}
+          vendorName={item.vendorName}
+          documentTypeId={item.documentTypeId}
+          documentTypeName={item.documentTypeName}
+          status={item.status}
+          role={role}
+          vendorEmail={item.vendorEmail}
+        />
+      ) : null}
       {action.kind === "link" ? (
         <Button asChild variant="outline" size="sm">
           <Link href={`/vendors/${item.vendorId}`} aria-label={label}>

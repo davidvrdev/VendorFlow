@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { can } from "../permissions";
+import type { Role } from "../types";
 
 const ITEMS = [
   { href: "/settings/organization", label: "Organization" },
@@ -12,8 +14,19 @@ const ITEMS = [
 // Cosmetic: the page itself redirects roles without REQUIREMENTS_MANAGE and the API enforces it.
 const DOCUMENT_TYPES_ITEM = { href: "/settings/document-types", label: "Document types" };
 
-export function SettingsNav({ canManageDocumentTypes = false }: { canManageDocumentTypes?: boolean }) {
-  const items = canManageDocumentTypes ? [...ITEMS, DOCUMENT_TYPES_ITEM] : ITEMS;
+const EMAIL_ACTIVITY_ITEM = { href: "/settings/email-activity", label: "Email activity" };
+
+/** Pure: which tabs a role sees. Cosmetic: pages redirect and the API enforces. */
+export function settingsNavItems(role: Role | null | undefined): { href: string; label: string }[] {
+  return [
+    ...ITEMS,
+    ...(can(role, "REQUIREMENTS_MANAGE") ? [DOCUMENT_TYPES_ITEM] : []),
+    ...(can(role, "EMAIL_ACTIVITY_VIEW") ? [EMAIL_ACTIVITY_ITEM] : []),
+  ];
+}
+
+export function SettingsNav({ role }: { role?: Role | null }) {
+  const items = settingsNavItems(role);
   const pathname = usePathname();
   return (
     <nav aria-label="Settings" className="mb-8 border-b">

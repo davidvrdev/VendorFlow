@@ -128,6 +128,13 @@ export function describeHistoryEvent(event: HistoryEvent, typeNames: Record<stri
   switch (event.action) {
     case "vendor.created":
       return { label: "Vendor created", details: [] };
+    case "vendor.document_requested": {
+      const code = asText(metaValue(event.changes, ["documentTypeCode", "typeCode", "documentType", "type"]));
+      const type = code ? (typeNames[code] ?? code) : undefined;
+      const email = asText(metaValue(event.changes, ["recipientEmail", "recipient", "email", "to"]));
+      const label = `Requested ${type ?? "a document"}${email ? ` from ${email}` : ""}`;
+      return { label, details: [] };
+    }
     case "vendor.deactivated":
       return { label: "Vendor deactivated", details: [] };
     case "vendor.reactivated":

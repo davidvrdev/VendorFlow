@@ -24,7 +24,17 @@ describe("AttentionList", () => {
     expect(within(rows[0]).getByRole("button", { name: "Upload Certificate of Insurance for Acme Plumbing" })).toBeInTheDocument();
     expect(within(rows[1]).getByText("Missing")).toBeInTheDocument();
     expect(within(rows[2]).getByRole("button", { name: "Review Certificate of Insurance for Cedar Roofing" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(3);
+    // Upload/Review per row plus "Request from vendor" for the two UPLOAD rows.
+    expect(screen.getAllByRole("button")).toHaveLength(5);
+    expect(within(rows[1]).getByRole("button", { name: "Request from vendor: W-9" })).toBeEnabled();
+    expect(within(rows[2]).queryByRole("button", { name: /Request from vendor/ })).toBeNull();
+  });
+
+  it("disables the request with an explanation when the vendor has no email", () => {
+    render(<AttentionList items={[{ ...items[1], vendorEmail: null }]} role="MEMBER" documentTypes={[]} />);
+    expect(screen.getByRole("button", { name: "Request from vendor: W-9" })).toBeDisabled();
+    expect(screen.getByText(/Add the vendor's email to request documents/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit vendor" })).toHaveAttribute("href", "/vendors/v2/edit");
   });
 
   it("gives viewers links instead of buttons", () => {

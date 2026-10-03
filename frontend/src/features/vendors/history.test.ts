@@ -106,3 +106,14 @@ describe("describeHistoryEvent: document events", () => {
     expect(describeHistoryEvent(event("document.reviewed", weird)).label).toBe("Document reviewed");
   });
 });
+
+describe("vendor.document_requested", () => {
+  it("reads 'Requested {type} from {email}'", () => {
+    const event = { id: "e", action: "vendor.document_requested", actor: null, occurredAt: "2030-01-01T00:00:00Z", changes: { documentTypeCode: { before: null, after: "W9" }, recipientEmail: { before: null, after: "v@example.com" } } };
+    expect(describeHistoryEvent(event, { W9: "W-9" }).label).toBe("Requested W-9 from v@example.com");
+  });
+  it("tolerates missing metadata", () => {
+    const event = { id: "e", action: "vendor.document_requested", actor: null, occurredAt: "2030-01-01T00:00:00Z", changes: null };
+    expect(describeHistoryEvent(event).label).toBe("Requested a document");
+  });
+});
