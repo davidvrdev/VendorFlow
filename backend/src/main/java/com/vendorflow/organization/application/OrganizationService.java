@@ -71,6 +71,16 @@ public class OrganizationService {
         return org.getId();
     }
 
+    /** Time zone and expiring window of an organization, for the compliance engine (callers authorize first). */
+    public record ComplianceSettings(String timeZone, int expiringWindowDays) {
+    }
+
+    @Transactional(readOnly = true)
+    public ComplianceSettings complianceSettings(UUID organizationId) {
+        Organization org = load(organizationId);
+        return new ComplianceSettings(org.getTimeZone(), org.getExpiringWindowDays());
+    }
+
     /** The caller's active organization. Any member may read it (no extra permission). */
     @Transactional(readOnly = true)
     public OrganizationView getActive() {

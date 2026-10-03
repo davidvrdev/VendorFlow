@@ -27,9 +27,29 @@ public class MutableClock extends Clock {
         return ZoneOffset.UTC;
     }
 
+    /**
+     * A view of this clock in another zone (same instants, including later advance() calls). The compliance engine
+     * computes "today" with {@code LocalDate.now(clock.withZone(orgZone))}, so the zone must be honored.
+     */
     @Override
     public Clock withZone(ZoneId zone) {
-        return this;
+        MutableClock parent = this;
+        return new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return zone;
+            }
+
+            @Override
+            public Clock withZone(ZoneId other) {
+                return parent.withZone(other);
+            }
+
+            @Override
+            public Instant instant() {
+                return parent.instant();
+            }
+        };
     }
 
     @Override

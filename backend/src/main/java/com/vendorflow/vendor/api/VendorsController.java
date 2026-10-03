@@ -33,9 +33,10 @@ public class VendorsController {
     @GetMapping
     public PageResponse<VendorSummary> list(@RequestParam(required = false) String q,
             @RequestParam(required = false) String status, @RequestParam(required = false) String category,
+            @RequestParam(required = false) String compliance,
             @RequestParam(required = false) String sort, @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "" + VendorService.DEFAULT_PAGE_SIZE) int size) {
-        return service.list(q, status, category, sort, page, size);
+        return service.list(q, status, category, compliance, sort, page, size);
     }
 
     @GetMapping("/categories")

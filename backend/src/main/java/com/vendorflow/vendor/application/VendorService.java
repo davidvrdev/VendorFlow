@@ -1,6 +1,13 @@
 package com.vendorflow.vendor.application;
 
 import com.vendorflow.audit.AuditService;
+import com.vendorflow.compliance.application.ComplianceContext;
+import com.vendorflow.compliance.application.ComplianceContextService;
+import com.vendorflow.compliance.domain.ComplianceCalculator;
+import com.vendorflow.compliance.domain.ComplianceCalculator.DocState;
+import com.vendorflow.compliance.domain.RequirementStatus;
+import com.vendorflow.compliance.domain.VendorCompliance;
+import com.vendorflow.document.api.DocumentTypeAdminView;
 import com.vendorflow.document.api.DocumentSummary;
 import com.vendorflow.document.api.DocumentTypeView;
 import com.vendorflow.document.application.DocumentReadService;
@@ -35,6 +42,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -65,11 +73,13 @@ public class VendorService {
     private final AuthorizationService authorization;
     private final AuditService audit;
     private final Clock clock;
+    private final ComplianceContextService complianceContext;
 
     public VendorService(VendorRepository vendors, VendorRequirementRepository requirements,
             VendorSearchRepository search, DocumentTypeService documentTypes, DocumentReadService documentReads,
             UserAccountService users,
-            AuthorizationService authorization, AuditService audit, Clock clock) {
+            AuthorizationService authorization, AuditService audit, Clock clock,
+            ComplianceContextService complianceContext) {
         this.vendors = vendors;
         this.requirements = requirements;
         this.search = search;
@@ -79,22 +89,25 @@ public class VendorService {
         this.authorization = authorization;
         this.audit = audit;
         this.clock = clock;
+        this.complianceContext = complianceContext;
     }
 
     // ---- reads ----
 
     @Transactional(readOnly = true)
-    public PageResponse<VendorSummary> list(String q, String status, String category, String sort, int page,
-            int size) {
+    public PageResponse<VendorSummary> list(String q, String status, String category, String compliance, String sort,
+            int page, int size) {
         TenantContext.Tenant tenant = authorization.require(Permission.DATA_VIEW);
         List<FieldViolation> errors = new ArrayList<>();
         VendorStatus statusFilter = parseStatus(status, errors);
+        VendorCompliance complianceFilter = parseCompliance(compliance, errors);
         SortSpec sortSpec = parseSort(sort, errors);
         if (!errors.isEmpty()) {
             throw new RequestValidationException(errors);
         }
+        ComplianceContext ctx = complianceContext.forOrganization(tenant.organizationId());
         var criteria = new VendorSearchRepository.Criteria(blankToNull(q), statusFilter, blankToNull(category),
-                sortSpec.field(), sortSpec.ascending());
+                complianceFilter, sortSpec.field(), sortSpec.ascending(), ctx.today(), ctx.windowDays());
         return PageResponse.of(search.search(tenant.organizationId(), criteria, PageResponse.pageable(page, size)));
     }
 
@@ -277,6 +290,7 @@ public class VendorService {
 
     private VendorDetail detail(Vendor v) {
         UUID orgId = v.getOrganizationId();
+        ComplianceContext ctx = complianceContext.forOrganization(orgId);
         List<UUID> typeIds = requirements.findByOrganizationIdAndVendorId(orgId, v.getId()).stream()
                 .map(VendorRequirement::getDocumentTypeId).toList();
         // ONE query for all CURRENT documents of the vendor (at most one per type), then matched in memory.
@@ -284,19 +298,35 @@ public class VendorService {
         for (DocumentSummary doc : documentReads.findByVendor(orgId, v.getId(), false)) {
             currentByType.put(doc.documentType().id(), doc);
         }
-        List<VendorDetail.Requirement> reqs = documentTypes.findByIds(orgId, typeIds).stream()
-                .sorted(Comparator.comparingInt(DocumentTypeView::sortOrder).thenComparing(DocumentTypeView::name))
-                .map(t -> new VendorDetail.Requirement(t.id(), t.code(), t.name(), t.hasExpiration(),
-                        currentByType.get(t.id())))
+        List<DocumentTypeAdminView> types = documentTypes.findAdminViewsByIds(orgId, typeIds).stream()
+                .sorted(Comparator.comparingInt(DocumentTypeAdminView::sortOrder)
+                        .thenComparing(DocumentTypeAdminView::name))
                 .toList();
+        // Rules live in ComplianceCalculator; everything it needs is already loaded (no per-requirement queries).
+        // Requirements of inactive types still get a status/days (shown greyed) but never count in the summary.
+        List<VendorDetail.Requirement> reqs = new ArrayList<>();
+        List<ComplianceCalculator.Evaluated> activeEvaluations = new ArrayList<>();
+        for (DocumentTypeAdminView t : types) {
+            DocumentSummary doc = currentByType.get(t.id());
+            Optional<DocState> state = Optional.ofNullable(doc)
+                    .map(d -> new DocState(d.reviewStatus(), d.expirationDate()));
+            ComplianceCalculator.Evaluated evaluated = ComplianceCalculator.evaluated(t.hasExpiration(), state,
+                    ctx.today(), ctx.windowDays());
+            if (t.active()) {
+                activeEvaluations.add(evaluated);
+            }
+            reqs.add(new VendorDetail.Requirement(t.id(), t.code(), t.name(), t.hasExpiration(), doc,
+                    evaluated.status(),
+                    ComplianceCalculator.daysUntilExpiration(t.hasExpiration(), state, ctx.today()), t.active()));
+        }
         Set<UUID> requiredTypeIds = new HashSet<>(typeIds);
         List<DocumentSummary> others = currentByType.values().stream()
                 .filter(doc -> !requiredTypeIds.contains(doc.documentType().id())).toList();
         VendorDetail.CreatedBy createdBy = v.getCreatedByUserId() == null ? null
                 : new VendorDetail.CreatedBy(users.require(v.getCreatedByUserId()).fullName());
         return new VendorDetail(v.getId(), v.getCompanyName(), v.getContactName(), v.getEmail(), v.getPhone(),
-                v.getCategory(), v.getStatus(), reqs.size(), v.getCreatedAt(), v.getUpdatedAt(), v.getNotes(),
-                createdBy, reqs, others);
+                v.getCategory(), v.getStatus(), activeEvaluations.size(), v.getCreatedAt(), v.getUpdatedAt(),
+                v.getNotes(), createdBy, reqs, others, ComplianceCalculator.summarize(activeEvaluations, ctx.today()));
     }
 
     // ---- used by the document feature (it authorizes the caller itself, then asks us about the vendor) ----
@@ -343,6 +373,18 @@ public class VendorService {
         };
     }
 
+    private static VendorCompliance parseCompliance(String compliance, List<FieldViolation> errors) {
+        if (compliance == null || compliance.isBlank()) {
+            return null;
+        }
+        try {
+            return VendorCompliance.valueOf(compliance);
+        } catch (IllegalArgumentException e) {
+            errors.add(new FieldViolation("compliance", "must be COMPLIANT, ATTENTION or NON_COMPLIANT"));
+            return null;
+        }
+    }
+
     private record SortSpec(SortField field, boolean ascending) {
     }
 
@@ -355,12 +397,14 @@ public class VendorService {
             case "companyName" -> SortField.COMPANY_NAME;
             case "createdAt" -> SortField.CREATED_AT;
             case "updatedAt" -> SortField.UPDATED_AT;
+            case "compliance" -> SortField.COMPLIANCE;
+            case "nextExpiration" -> SortField.NEXT_EXPIRATION;
             default -> null;
         };
         String direction = parts.length == 2 ? parts[1].toLowerCase(Locale.ROOT) : "asc";
         if (field == null || !(direction.equals("asc") || direction.equals("desc"))) {
-            errors.add(new FieldViolation("sort", "must be companyName, createdAt or updatedAt, optionally followed"
-                    + " by ,asc or ,desc"));
+            errors.add(new FieldViolation("sort", "must be companyName, createdAt, updatedAt, compliance or nextExpiration,"
+                    + " optionally followed by ,asc or ,desc"));
             return new SortSpec(SortField.COMPANY_NAME, true);
         }
         return new SortSpec(field, direction.equals("asc"));

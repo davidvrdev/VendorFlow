@@ -122,6 +122,16 @@ public class DocumentTypeService {
         return types.findByOrganizationIdAndIdIn(organizationId, ids).stream().map(DocumentTypeView::from).toList();
     }
 
+    /** Like findByIds, with {@code active} (vendor detail shows requirements of deactivated types greyed out). */
+    @Transactional(readOnly = true)
+    public List<DocumentTypeAdminView> findAdminViewsByIds(UUID organizationId, Collection<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return types.findByOrganizationIdAndIdIn(organizationId, ids).stream().map(DocumentTypeAdminView::from)
+                .toList();
+    }
+
     // ---- management (Phase 3) ----
 
     /** All types of the organization (active and inactive) with {@code active}: management screens only. */

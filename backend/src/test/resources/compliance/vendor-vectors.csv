@@ -1,0 +1,14 @@
+# Vendor-level aggregation vectors. requirements = ';'-separated "E|N : review : offset" where E = type with expiration,
+# N = type without; review = none|PENDING|APPROVED|REJECTED; offset = expirationDate - today in days (empty = null).
+# Expected: vendor compliance, counts and nextExpiration (offset of the earliest counted date; empty = null).
+name,requirements,windowDays,expected,missing,expired,expiring,reviewRequired,ok,nextOffset
+no_requirements,,30,COMPLIANT,0,0,0,0,0,
+all_ok,E:APPROVED:100;N:APPROVED:,30,COMPLIANT,0,0,0,0,2,100
+one_expiring,E:APPROVED:100;E:APPROVED:10,30,ATTENTION,0,0,1,0,1,10
+review_only,E:PENDING:50;N:APPROVED:,30,ATTENTION,0,0,0,1,1,50
+missing_beats_expiring_and_review,E:none:;E:APPROVED:5;E:PENDING:90,30,NON_COMPLIANT,1,0,1,1,0,5
+expired_beats_all,E:APPROVED:-3;E:PENDING:1;N:none:,30,NON_COMPLIANT,1,1,0,1,0,-3
+next_ignores_rejected,E:REJECTED:-10;E:APPROVED:40;E:APPROVED:20,30,NON_COMPLIANT,1,0,1,0,1,20
+next_ignores_plain_types,N:APPROVED:-100;E:APPROVED:400,30,COMPLIANT,0,0,0,0,2,400
+window_changes_result,E:APPROVED:45,60,ATTENTION,0,0,1,0,0,45
+all_five_statuses,E:none:;E:APPROVED:-1;E:APPROVED:3;E:PENDING:80;E:APPROVED:200,30,NON_COMPLIANT,1,1,1,1,1,-1

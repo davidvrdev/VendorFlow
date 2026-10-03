@@ -1,5 +1,7 @@
 package com.vendorflow.vendor.api;
 
+import com.vendorflow.compliance.domain.ComplianceSummary;
+import com.vendorflow.compliance.domain.RequirementStatus;
 import com.vendorflow.document.api.DocumentSummary;
 import com.vendorflow.vendor.domain.VendorStatus;
 import java.time.Instant;
@@ -12,12 +14,13 @@ import java.util.UUID;
  */
 public record VendorDetail(UUID id, String companyName, String contactName, String email, String phone,
         String category, VendorStatus status, long requirementCount, Instant createdAt, Instant updatedAt,
-        String notes, CreatedBy createdBy, List<Requirement> requirements, List<DocumentSummary> otherDocuments) {
+        String notes, CreatedBy createdBy, List<Requirement> requirements, List<DocumentSummary> otherDocuments,
+        ComplianceSummary compliance) {
 
     public record CreatedBy(String fullName) {
     }
 
     public record Requirement(UUID documentTypeId, String code, String name, boolean hasExpiration,
-            DocumentSummary currentDocument) {
+            DocumentSummary currentDocument, RequirementStatus status, Integer daysUntilExpiration, boolean active) {
     }
 }

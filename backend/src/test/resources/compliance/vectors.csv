@@ -1,0 +1,35 @@
+# Shared compliance test vectors (docs/API.md "Phase 4 contract details"). Run against BOTH the Java
+# ComplianceCalculator (ComplianceCalculatorVectorsTest) and the SQL of GET /vendors (ComplianceListSqlTest).
+# review: none (no CURRENT document) | PENDING | APPROVED | REJECTED
+# expirationOffsetDays: document expirationDate = today + offset; empty = null date
+# countsNext: whether the document's date feeds vendor.nextExpiration (non-rejected CURRENT doc of an expiring type)
+name,hasExpiration,review,expirationOffsetDays,windowDays,expected,countsNext
+no_doc_expiring_type,true,none,,30,MISSING,false
+no_doc_plain_type,false,none,,30,MISSING,false
+rejected_future_date,true,REJECTED,100,30,MISSING,false
+rejected_expired,true,REJECTED,-5,30,MISSING,false
+rejected_plain_type,false,REJECTED,,30,MISSING,false
+approved_expired_yesterday,true,APPROVED,-1,30,EXPIRED,true
+approved_expired_long_ago,true,APPROVED,-400,30,EXPIRED,true
+pending_expired,true,PENDING,-1,30,EXPIRED,true
+approved_expires_today,true,APPROVED,0,30,EXPIRING,true
+pending_expires_today,true,PENDING,0,30,REVIEW_REQUIRED,true
+approved_exactly_at_window,true,APPROVED,30,30,EXPIRING,true
+approved_window_plus_one,true,APPROVED,31,30,OK,true
+approved_far_future,true,APPROVED,365,30,OK,true
+pending_in_window,true,PENDING,10,30,REVIEW_REQUIRED,true
+pending_far_future,true,PENDING,200,30,REVIEW_REQUIRED,true
+approved_null_date_expiring_type,true,APPROVED,,30,REVIEW_REQUIRED,false
+pending_null_date_expiring_type,true,PENDING,,30,REVIEW_REQUIRED,false
+plain_type_approved_no_dates,false,APPROVED,,30,OK,false
+plain_type_approved_past_date_ignored,false,APPROVED,-100,30,OK,false
+plain_type_approved_today_ignored,false,APPROVED,0,30,OK,false
+plain_type_pending_no_dates,false,PENDING,,30,REVIEW_REQUIRED,false
+plain_type_pending_past_date_ignored,false,PENDING,-10,30,REVIEW_REQUIRED,false
+window1_tomorrow,true,APPROVED,1,1,EXPIRING,true
+window1_in_two_days,true,APPROVED,2,1,OK,true
+window1_today,true,APPROVED,0,1,EXPIRING,true
+window1_pending_tomorrow,true,PENDING,1,1,REVIEW_REQUIRED,true
+window180_exactly,true,APPROVED,180,180,EXPIRING,true
+window180_plus_one,true,APPROVED,181,180,OK,true
+window180_expired_yesterday,true,APPROVED,-1,180,EXPIRED,true

@@ -166,7 +166,7 @@ Rules:
 
 ### Vendors (Phase 2)
 - `GET    /vendors?q=&status=&category=&page=&size=&sort=` → page of `VendorSummary` **(implemented)**
-  (`compliance` filter + compliance fields are added in Phase 4)
+  (+ `compliance` filter, sorts `compliance`/`nextExpiration` and `compliance` summary field: Phase 4, **implemented**)
 - `GET    /vendors/categories` → `string[]` distinct non-empty categories of the org, sorted (for the filter) **(implemented)**
 - `POST   /vendors` → 201 `VendorDetail` **(implemented)**
 - `GET    /vendors/{id}` → `VendorDetail` **(implemented)**
@@ -377,6 +377,26 @@ List additions: `GET /vendors?compliance=COMPLIANT|ATTENTION|NON_COMPLIANT` (inv
 `sort` adds `compliance` (NON_COMPLIANT → ATTENTION → COMPLIANT, then companyName) and `nextExpiration`
 (nulls last). Still one page query + one count query (N+1 guard test extended).
 Org setting changes (`expiringWindowDays`, `timeZone`) apply immediately (nothing stored).
+
+**Implementation notes (Phase 4 backend) — IMPLEMENTED; differences/additions vs the contract above:**
+- Shared vectors live in `backend/src/test/resources/compliance/vectors.csv` (28 requirement rows; the contract text said
+  `compliance-vectors.csv`) and `vendor-vectors.csv` (10 vendor-aggregation rows). `ComplianceCalculatorVectorsTest` runs
+  them through `ComplianceCalculator`; `ComplianceListSqlTest` inserts each row in Postgres and compares `GET /vendors`.
+- "Today" is `LocalDate.now(clock.withZone(ZoneId.of(org.timeZone)))` (`ComplianceContextService`); it and the window are
+  bind parameters of the SQL (never `now()`). The list costs one extra statement (org settings): tenant + org + page + count.
+- `nextExpiration` = earliest `expirationDate` of a CURRENT, non-rejected document whose type `hasExpiration` (expired dates
+  count, so it can be in the past); no-expiration types never contribute even if their document has dates.
+- `requirementCount` (list and detail) = ACTIVE requirements only. `compliance` is present on every list item and on detail.
+- `VendorDetail.requirements` still lists requirements on INACTIVE types (`active: false`); they get a computed
+  `status`/`daysUntilExpiration` (so the UI can grey them) but are NOT counted in `compliance` or `requirementCount`.
+- `daysUntilExpiration` = `expirationDate - today` (negative when expired); null when the type has no expiration, there is
+  no CURRENT document, the document is REJECTED, or the date is null.
+- `sort=compliance[,asc|desc]`: asc = NON_COMPLIANT, ATTENTION, COMPLIANT (desc reverses the rank); ties by companyName
+  ascending then id. `sort=nextExpiration[,asc|desc]`: vendors with no date are always last; tie-break id. An invalid `sort`
+  message now lists the five fields. Invalid `compliance` -> 400 `errors[0].field = "compliance"`; filter is case-sensitive.
+- The `compliance` filter is applied to the computed status, so `totalItems`/`totalPages` reflect it (same CTEs for page and count).
+- No new index/migration: the aggregation reads `vendor_requirement` and CURRENT documents by organization using existing
+  indexes (`document_current_uq`, `vendor_requirement_vendor_type_uq`); revisit with EXPLAIN when org size warrants.
 
 ### Dashboard (Phase 5)
 - `GET /dashboard/summary` → counts
