@@ -1,6 +1,7 @@
 package com.vendorflow.vendor.api;
 
 import com.vendorflow.shared.web.PageResponse;
+import com.vendorflow.vendor.application.DocumentRequestService;
 import com.vendorflow.vendor.application.VendorHistoryService;
 import com.vendorflow.vendor.application.VendorService;
 import jakarta.validation.Valid;
@@ -24,8 +25,11 @@ public class VendorsController {
 
     private final VendorService service;
     private final VendorHistoryService history;
+    private final DocumentRequestService documentRequests;
 
-    public VendorsController(VendorService service, VendorHistoryService history) {
+    public VendorsController(VendorService service, VendorHistoryService history,
+            DocumentRequestService documentRequests) {
+        this.documentRequests = documentRequests;
         this.service = service;
         this.history = history;
     }
@@ -73,6 +77,13 @@ public class VendorsController {
     @PutMapping("/{id}/requirements")
     public VendorDetail updateRequirements(@PathVariable UUID id, @Valid @RequestBody RequirementsRequest request) {
         return service.updateRequirements(id, request);
+    }
+
+    @PostMapping("/{id}/document-requests")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DocumentRequestResult requestDocument(@PathVariable UUID id,
+            @Valid @RequestBody DocumentRequestRequest request) {
+        return documentRequests.request(id, request.documentTypeId());
     }
 
     @GetMapping("/{id}/history")

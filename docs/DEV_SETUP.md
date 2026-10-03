@@ -88,3 +88,9 @@ curl "http://localhost:8080/api/test/mailbox?to=jane@example.com"
 - The endpoint is unauthenticated and returns secret links: it is registered ONLY under `e2e`, and the application
   refuses to start if `e2e` and `prod` are both active (`ProfileGuard`). Never enable it on a shared or public host.
 - Without `e2e` (including the `test` profile) `GET /api/test/mailbox` is 401/404.
+
+## Email: logging vs Resend
+- Default `EMAIL_PROVIDER=logging`: nothing is delivered; the log shows only the notification id and the recipient's domain. `GET /api/v1/notifications` (OWNER/ADMIN) shows the outbox state.
+- To send through Resend locally: `EMAIL_PROVIDER=resend RESEND_API_KEY=re_... EMAIL_FROM="VendorFlow <notifications@your-verified-domain>"` (the domain must be verified in Resend; the key is never logged or committed). Missing key/from = startup failure. Prod refuses `logging`.
+- **Real sending is unverified until the owner provides a Resend API key and a verified sending domain**; the behavior is covered by mock-server tests (`ResendEmailSenderTest`, `ResendDispatchTest`) built from Resend's official docs.
+- Reminder job: `app.reminders.enabled` (default true; false in the test and e2e profiles). Under `local,e2e`, `POST /api/test/reminders/run` (logged in, loopback only) runs it now for the active org; digests and document requests land in the e2e mailbox (`/api/test/mailbox?to=...` now also returns `text` and `replyTo`).

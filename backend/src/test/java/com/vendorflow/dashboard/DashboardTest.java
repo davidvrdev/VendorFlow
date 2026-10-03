@@ -139,6 +139,20 @@ class DashboardTest extends IntegrationTest {
     }
 
     @Test
+    void attentionItemsCarryTheVendorEmailOrNull() throws Exception {
+        UUID withEmail = fx.vendor(org, "With Email");
+        fx.require(org, withEmail, "W9");
+        jdbc.update("update vendor set email = 'contact@withemail.example' where id = ?", withEmail);
+        UUID noEmail = fx.vendor(org, "No Email");
+        fx.require(org, noEmail, "W9");
+        Map<String, JsonNode> items = new java.util.HashMap<>();
+        get(owner, ATTENTION).get("items").forEach(i -> items.put(i.get("vendorName").asString(), i));
+        assertThat(items.get("With Email").get("vendorEmail").asString()).isEqualTo("contact@withemail.example");
+        assertThat(items.get("No Email").has("vendorEmail")).isTrue();
+        assertThat(items.get("No Email").get("vendorEmail").isNull()).isTrue();
+    }
+
+    @Test
     void attentionItemsCarryDocumentDatesAndActions() throws Exception {
         UUID expired = fx.vendor(org, "V Expired");
         fx.requirement(org, expired, "COI", ReviewStatus.APPROVED, today.minusDays(4));

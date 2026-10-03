@@ -1,5 +1,6 @@
 package com.vendorflow.notification;
 
+import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,8 @@ public class EmailTemplates {
             case EMAIL_VERIFICATION -> emailVerification(payload);
             case PASSWORD_RESET -> passwordReset(payload);
             case INVITATION -> invitation(payload);
+            case DOCUMENT_REQUEST -> documentRequest(payload);
+            case COMPLIANCE_DIGEST -> complianceDigest(payload);
             default -> throw new IllegalArgumentException("No template for kind " + kind);
         };
     }
@@ -77,6 +80,98 @@ public class EmailTemplates {
                 + "<p><a href=\"" + HtmlUtils.htmlEscape(link) + "\">Accept the invitation</a></p>"
                 + "<p>This invitation expires in 7 days. If you were not expecting it, ignore this email.</p>";
         return new RenderedEmail(subject, text, html);
+    }
+
+    private RenderedEmail documentRequest(Map<String, Object> payload) {
+        String organization = oneLine(required(payload, "organizationName"));
+        String type = oneLine(required(payload, "documentTypeName"));
+        String vendor = oneLine(String.valueOf(payload.getOrDefault("vendorName", "")));
+        String contact = oneLine(String.valueOf(payload.getOrDefault("contactName", "")));
+        String requester = oneLine(String.valueOf(payload.getOrDefault("requesterName", "A team member")));
+        String replyTo = payload.get("replyTo") == null ? null : payload.get("replyTo").toString();
+        String greeting = contact.isBlank() ? "Hello" : "Hello " + contact;
+        // Subject is a header: names are one-lined above (no CR/LF injection).
+        String subject = organization + " requests your " + type;
+        String text = greeting + ",\n\n"
+                + requester + " at " + organization + " asked VendorFlow to request the following document"
+                + (vendor.isBlank() ? "" : " for " + vendor) + ":\n\n"
+                + "  " + type + "\n\n"
+                + "Please reply to this email with the document attached.\n";
+        String html = "<p>" + HtmlUtils.htmlEscape(greeting) + ",</p>"
+                + "<p>" + HtmlUtils.htmlEscape(requester) + " at <strong>" + HtmlUtils.htmlEscape(organization)
+                + "</strong> asked VendorFlow to request the following document"
+                + (vendor.isBlank() ? "" : " for " + HtmlUtils.htmlEscape(vendor)) + ":</p>"
+                + "<p><strong>" + HtmlUtils.htmlEscape(type) + "</strong></p>"
+                + "<p>Please reply to this email with the document attached.</p>";
+        return new RenderedEmail(subject, text, html, replyTo);
+    }
+
+    @SuppressWarnings("unchecked")
+    private RenderedEmail complianceDigest(Map<String, Object> payload) {
+        String organization = oneLine(required(payload, "organizationName"));
+        List<Map<String, Object>> expired = list(payload.get("expired"));
+        List<Map<String, Object>> expiring = list(payload.get("expiring"));
+        int missing = payload.get("missingCount") instanceof Number n ? n.intValue() : 0;
+        String link = baseUrl + "/dashboard";
+
+        List<String> parts = new java.util.ArrayList<>();
+        if (!expired.isEmpty()) {
+            parts.add(expired.size() + (expired.size() == 1 ? " document" : " documents") + " expired");
+        }
+        if (!expiring.isEmpty()) {
+            parts.add(expiring.size() + " expiring soon");
+        }
+        String subject = "VendorFlow: " + (parts.isEmpty() ? "compliance update" : String.join(", ", parts));
+        if (expired.isEmpty() && !expiring.isEmpty()) {
+            subject = "VendorFlow: " + expiring.size() + (expiring.size() == 1 ? " document" : " documents")
+                    + " expiring soon";
+        }
+
+        StringBuilder text = new StringBuilder("Compliance update for " + organization + "\n\n");
+        StringBuilder html = new StringBuilder("<p>Compliance update for <strong>" + HtmlUtils.htmlEscape(organization)
+                + "</strong></p>");
+        if (!expired.isEmpty()) {
+            text.append("Expired:\n");
+            html.append("<h3>Expired</h3><ul>");
+            for (Map<String, Object> item : expired) {
+                String line = oneLine(str(item, "vendorName")) + " - " + oneLine(str(item, "documentType"))
+                        + " (expired " + str(item, "expirationDate") + ")";
+                text.append("  - ").append(line).append('\n');
+                html.append("<li>").append(HtmlUtils.htmlEscape(line)).append("</li>");
+            }
+            html.append("</ul>");
+            text.append('\n');
+        }
+        if (!expiring.isEmpty()) {
+            text.append("Expiring soon:\n");
+            html.append("<h3>Expiring soon</h3><ul>");
+            for (Map<String, Object> item : expiring) {
+                Object days = item.get("daysLeft");
+                String line = oneLine(str(item, "vendorName")) + " - " + oneLine(str(item, "documentType"))
+                        + " (expires " + str(item, "expirationDate") + ", " + days
+                        + (days instanceof Number n && n.intValue() == 1 ? " day left)" : " days left)");
+                text.append("  - ").append(line).append('\n');
+                html.append("<li>").append(HtmlUtils.htmlEscape(line)).append("</li>");
+            }
+            html.append("</ul>");
+            text.append('\n');
+        }
+        String missingLine = missing + (missing == 1 ? " required document is" : " required documents are")
+                + " currently missing.";
+        text.append(missingLine).append("\n\nOpen your dashboard: ").append(link).append('\n');
+        html.append("<p>").append(HtmlUtils.htmlEscape(missingLine)).append("</p><p><a href=\"")
+                .append(HtmlUtils.htmlEscape(link)).append("\">Open your dashboard</a></p>");
+        return new RenderedEmail(subject, text.toString(), html.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> list(Object value) {
+        return value instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
+    }
+
+    private static String str(Map<String, Object> item, String key) {
+        Object v = item.get(key);
+        return v == null ? "" : v.toString();
     }
 
     /** Collapses control characters/line breaks so user-supplied names cannot inject headers or fake lines. */

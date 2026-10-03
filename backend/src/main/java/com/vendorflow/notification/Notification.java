@@ -147,6 +147,15 @@ public class Notification extends UuidEntity {
         }
     }
 
+    /** Permanent failure (provider rejected the request): terminal at once, no retries. */
+    void markDead(String sanitizedError, Instant now) {
+        this.attempts++;
+        this.lastError = sanitizedError;
+        this.updatedAt = now;
+        this.status = NotificationStatus.DEAD;
+        scrubSecrets();
+    }
+
     private void scrubSecrets() {
         Map<String, Object> scrubbed = new LinkedHashMap<>(payload);
         scrubbed.keySet().removeAll(SECRET_KEYS);

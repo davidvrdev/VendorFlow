@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * E2E-only email "provider": keeps the last {@value #CAPACITY} messages in memory so Playwright can read the
- * verification / reset / invitation links. It exists only under profile {@code e2e}, which must never be combined
+ * verification / reset / invitation links and (via the plain-text body) digest/request content. It exists only under profile {@code e2e}, which must never be combined
  * with {@code prod} (ProfileGuard refuses to start). It deliberately stores link-bearing content, which is why it is
  * unreachable in any other profile.
  */
@@ -24,7 +24,8 @@ public class InMemoryMailbox implements EmailSender {
     static final int CAPACITY = 200;
     private static final Pattern URL = Pattern.compile("https?://[^\\s\"'<>]+");
 
-    public record StoredMessage(String kind, String to, String subject, List<String> links, Instant receivedAt) {
+    public record StoredMessage(String kind, String to, String subject, String text, String replyTo,
+            List<String> links, Instant receivedAt) {
     }
 
     private final Deque<StoredMessage> messages = new ArrayDeque<>();
@@ -33,7 +34,7 @@ public class InMemoryMailbox implements EmailSender {
     public synchronized String send(EmailMessage message) {
         List<String> links = URL.matcher(message.textBody()).results().map(java.util.regex.MatchResult::group).toList();
         messages.addLast(new StoredMessage(message.kind() == null ? null : message.kind().name(), message.to(),
-                message.subject(), links, Instant.now()));
+                message.subject(), message.textBody(), message.replyTo(), links, Instant.now()));
         while (messages.size() > CAPACITY) {
             messages.removeFirst();
         }

@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
  * <ol>
  *   <li>{@code e2e} together with {@code prod}: e2e exposes a public mailbox with emailed secret links.</li>
  *   <li>{@code prod} with weak settings: the known dev ip-hash secret, a secret shorter than 32 characters, a
- *       non-Secure session cookie, or a non-https {@code app.base-url} (links in emails).</li>
+ *       non-Secure session cookie, a non-https {@code app.base-url} (links in emails), or {@code app.email.provider}
+ *       other than {@code resend} (the logging sender delivers nothing).</li>
  *   <li>NOT {@code prod} while the database host is not local: the default profile is {@code local}, so a deployment
  *       that forgets {@code SPRING_PROFILES_ACTIVE=prod} would otherwise run with local settings against a real
  *       database. Opt in explicitly with {@code app.allow-non-local-db-without-prod=true} (tests/staging).</li>
@@ -40,7 +41,8 @@ public class ProfileGuard {
         if (profiles.contains("prod")) {
             checkProd(environment.getProperty("app.security.ip-hash-secret"),
                     environment.getProperty("app.security.session-cookie-secure", Boolean.class, true),
-                    environment.getProperty("app.base-url"));
+                    environment.getProperty("app.base-url"),
+                    environment.getProperty("app.email.provider", "logging"));
         } else {
             JdbcConnectionDetails details = jdbcDetails.getIfAvailable();
             checkDatabaseHost(details == null ? null : details.getJdbcUrl(),
@@ -57,7 +59,8 @@ public class ProfileGuard {
     }
 
     /** @throws IllegalStateException when a prod setting is weak (the message never contains the secret itself) */
-    public static void checkProd(String ipHashSecret, boolean sessionCookieSecure, String baseUrl) {
+    public static void checkProd(String ipHashSecret, boolean sessionCookieSecure, String baseUrl,
+            String emailProvider) {
         if (ipHashSecret == null || KNOWN_DEV_SECRETS.contains(ipHashSecret)) {
             throw new IllegalStateException(
                     "Profile 'prod': app.security.ip-hash-secret is missing or a known dev value.");
@@ -71,6 +74,10 @@ public class ProfileGuard {
         }
         if (baseUrl == null || !baseUrl.toLowerCase(Locale.ROOT).startsWith("https://")) {
             throw new IllegalStateException("Profile 'prod': app.base-url must be an https:// URL.");
+        }
+        if (emailProvider == null || !emailProvider.equalsIgnoreCase("resend")) {
+            throw new IllegalStateException("Profile 'prod': app.email.provider must be 'resend' (a production app that "
+                    + "silently does not send email is a bug). Set EMAIL_PROVIDER=resend, RESEND_API_KEY and EMAIL_FROM.");
         }
     }
 

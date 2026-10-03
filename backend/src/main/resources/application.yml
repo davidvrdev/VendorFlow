@@ -95,6 +95,8 @@ app:
       document-upload: 30
       # same endpoint, per authenticated user id (checked in DocumentUploadService)
       document-upload-user: 30
+      # POST /api/v1/vendors/{id}/document-requests, per authenticated user id (DocumentRequestService)
+      document-request-user: 30
   documents:
     # Max size of one uploaded document (our own check, before the multipart limits above).
     max-size: 15MB
@@ -106,3 +108,15 @@ app:
     filesystem:
       # Relative paths resolve against the working directory (backend/ locally; gitignored as backend/storage-data/).
       root: ${STORAGE_FILESYSTEM_ROOT:./storage-data}
+  email:
+    # logging = delivers nothing (local/test); resend = Resend HTTP API. Prod refuses "logging" (ProfileGuard).
+    provider: ${EMAIL_PROVIDER:logging}
+    # From header, e.g. "VendorFlow <notifications@your-verified-domain.com>" (must be on a domain verified in Resend).
+    from: ${EMAIL_FROM:}
+    resend:
+      api-key: ${RESEND_API_KEY:}
+      base-url: https://api.resend.com
+  reminders:
+    # Scheduled expiry-reminder + digest job (every 15 min; per org once per org-local day after 07:00).
+    enabled: true
+    fixed-delay-ms: 900000

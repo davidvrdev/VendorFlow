@@ -79,9 +79,19 @@ public class OutboxDispatcher {
         try {
             RenderedEmail email = templates.render(n.getKind(), n.getPayload());
             String providerId = emailSender.send(new EmailMessage(n.getId(), n.getIdempotencyKey(),
-                    n.getRecipientEmail(), email.subject(), email.textBody(), email.htmlBody(), n.getKind()));
+                    n.getRecipientEmail(), email.subject(), email.textBody(), email.htmlBody(), n.getKind(), email.replyTo()));
             n.markSent(providerId, now);
             log.info("Notification sent: id={} kind={}", n.getId(), n.getKind());
+        } catch (EmailDeliveryException e) {
+            if (e.isPermanent()) {
+                // The provider rejected the request itself: retrying cannot help, so DEAD at once (no backoff).
+                n.markDead(sanitize(e), now);
+                log.warn("Notification permanently failed: id={} kind={} status=DEAD", n.getId(), n.getKind());
+            } else {
+                n.markFailed(sanitize(e), now);
+                log.warn("Notification attempt failed: id={} kind={} attempts={} status={}", n.getId(), n.getKind(),
+                        n.getAttempts(), n.getStatus());
+            }
         } catch (RuntimeException e) {
             n.markFailed(sanitize(e), now);
             log.warn("Notification attempt failed: id={} kind={} attempts={} status={}", n.getId(), n.getKind(),

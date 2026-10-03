@@ -7,7 +7,7 @@ import java.util.UUID;
 /** API shape "AttentionItem": one requirement that is not OK, with the action that resolves it. */
 public record AttentionItem(UUID vendorId, String vendorName, UUID documentTypeId, String documentTypeName,
         RequirementStatus status, UUID documentId, LocalDate expirationDate, Integer daysUntilExpiration,
-        AttentionAction action) {
+        AttentionAction action, String vendorEmail) {
 
     public enum AttentionAction {
         UPLOAD, UPLOAD_RENEWAL, REVIEW;

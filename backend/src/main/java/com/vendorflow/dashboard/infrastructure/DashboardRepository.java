@@ -80,7 +80,7 @@ public class DashboardRepository {
     public static final String ATTENTION_PAGE_SQL = "with " + RequirementStatusSql.REQ_CTE + """
 
             select r.vendor_id, v.company_name, r.document_type_id, r.type_name, r.req_status, r.document_id,
-                   r.exp_date
+                   r.exp_date, v.email
             """ + ATTENTION_FROM + ATTENTION_ORDER + " limit :limit offset :offset";
 
     private static final String ATTENTION_COUNT_SQL = "with " + RequirementStatusSql.REQ_CTE
@@ -113,7 +113,7 @@ public class DashboardRepository {
             LocalDate expiration = toLocalDate(r[6]);
             Integer days = expiration == null ? null : (int) (expiration.toEpochDay() - today.toEpochDay());
             items.add(new AttentionItem(toUuid(r[0]), (String) r[1], toUuid(r[2]), (String) r[3], status,
-                    r[5] == null ? null : toUuid(r[5]), expiration, days, AttentionAction.of(status)));
+                    r[5] == null ? null : toUuid(r[5]), expiration, days, AttentionAction.of(status), (String) r[7]));
         }
         long total = ((Number) count.getSingleResult()).longValue();
         return new PageImpl<>(items, pageable, total);

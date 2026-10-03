@@ -48,6 +48,9 @@ public class VendorHistoryService {
         if (type instanceof String t && filename instanceof String f) {
             return t + " - " + f;
         }
+        if (metadata.get("typeName") instanceof String t && metadata.get("recipientEmail") instanceof String to) {
+            return t + " - " + to; // vendor.document_requested
+        }
         return type instanceof String t ? t : null;
     }
 
@@ -72,6 +75,13 @@ public class VendorHistoryService {
                     result.put(String.valueOf(field), new HistoryEvent.Change(change.get("before"), change.get("after")));
                 }
             });
+        }
+        if (metadata.get("recipientEmail") instanceof String to) { // vendor.document_requested
+            for (String key : List.of("typeCode", "typeName", "recipientEmail")) {
+                if (metadata.get(key) != null) {
+                    result.put(key, new HistoryEvent.Change(null, metadata.get(key)));
+                }
+            }
         }
         if (metadata.get("added") instanceof List<?> added && !added.isEmpty()) {
             result.put("added", new HistoryEvent.Change(null, added));

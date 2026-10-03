@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -25,6 +27,22 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     List<Notification> claimDue(@Param("now") Instant now, @Param("limit") int limit);
 
     Optional<Notification> findByIdempotencyKey(String idempotencyKey);
+
+    /** Email activity of one organization, newest first. Account emails (verification/reset) are excluded twice: they have no organization, and by kind. */
+    @Query(value = """
+            select n from Notification n
+            where n.organizationId = :organizationId
+              and n.kind not in (com.vendorflow.notification.NotificationKind.EMAIL_VERIFICATION,
+                                 com.vendorflow.notification.NotificationKind.PASSWORD_RESET)
+            order by n.createdAt desc, n.id desc
+            """,
+            countQuery = """
+            select count(n) from Notification n
+            where n.organizationId = :organizationId
+              and n.kind not in (com.vendorflow.notification.NotificationKind.EMAIL_VERIFICATION,
+                                 com.vendorflow.notification.NotificationKind.PASSWORD_RESET)
+            """)
+    Page<Notification> findActivity(@Param("organizationId") UUID organizationId, Pageable pageable);
 
     /**
      * L1: a row that was never delivered must not keep a live-looking secret forever. Rows still PENDING/FAILED after

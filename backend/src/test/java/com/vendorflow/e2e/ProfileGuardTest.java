@@ -44,6 +44,7 @@ class ProfileGuardTest {
         env.setProperty("app.security.ip-hash-secret", STRONG_SECRET);
         env.setProperty("app.security.session-cookie-secure", "true");
         env.setProperty("app.base-url", "https://app.vendorflow.example");
+        env.setProperty("app.email.provider", "resend");
         return env;
     }
 
@@ -80,17 +81,17 @@ class ProfileGuardTest {
         env.setProperty("app.security.ip-hash-secret", "local-dev-only-ip-hash-secret-change-me");
         assertThatThrownBy(() -> new ProfileGuard(env, jdbc(null))).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("ip-hash-secret").hasMessageNotContaining("local-dev-only");
-        assertThatThrownBy(() -> ProfileGuard.checkProd("test-only-ip-hash-secret", true, "https://x.example"))
+        assertThatThrownBy(() -> ProfileGuard.checkProd("test-only-ip-hash-secret", true, "https://x.example", "resend"))
                 .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> ProfileGuard.checkProd(null, true, "https://x.example"))
+        assertThatThrownBy(() -> ProfileGuard.checkProd(null, true, "https://x.example", "resend"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void prodRefusesAShortIpHashSecret() {
-        assertThatThrownBy(() -> ProfileGuard.checkProd("x".repeat(31), true, "https://x.example"))
+        assertThatThrownBy(() -> ProfileGuard.checkProd("x".repeat(31), true, "https://x.example", "resend"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("32");
-        assertThatCode(() -> ProfileGuard.checkProd("x".repeat(32), true, "https://x.example"))
+        assertThatCode(() -> ProfileGuard.checkProd("x".repeat(32), true, "https://x.example", "resend"))
                 .doesNotThrowAnyException();
     }
 
@@ -103,14 +104,30 @@ class ProfileGuardTest {
     }
 
     @Test
+    void prodRefusesTheLoggingEmailProviderOrNone() {
+        MockEnvironment env = prodEnv();
+        env.setProperty("app.email.provider", "logging");
+        assertThatThrownBy(() -> new ProfileGuard(env, jdbc(null))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("app.email.provider");
+        MockEnvironment missing = new MockEnvironment();
+        missing.setActiveProfiles("prod");
+        missing.setProperty("app.security.ip-hash-secret", STRONG_SECRET);
+        missing.setProperty("app.base-url", "https://app.example.com");
+        assertThatThrownBy(() -> new ProfileGuard(missing, jdbc(null))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("app.email.provider");
+        assertThatThrownBy(() -> ProfileGuard.checkProd(STRONG_SECRET, true, "https://a.example", null))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void prodRefusesNonHttpsBaseUrl() {
         for (String url : new String[] {"http://app.example.com", "ftp://x", "", "app.example.com"}) {
-            assertThatThrownBy(() -> ProfileGuard.checkProd(STRONG_SECRET, true, url))
+            assertThatThrownBy(() -> ProfileGuard.checkProd(STRONG_SECRET, true, url, "resend"))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("base-url");
         }
-        assertThatThrownBy(() -> ProfileGuard.checkProd(STRONG_SECRET, true, null))
+        assertThatThrownBy(() -> ProfileGuard.checkProd(STRONG_SECRET, true, null, "resend"))
                 .isInstanceOf(IllegalStateException.class);
-        assertThatCode(() -> ProfileGuard.checkProd(STRONG_SECRET, true, "HTTPS://app.example.com"))
+        assertThatCode(() -> ProfileGuard.checkProd(STRONG_SECRET, true, "HTTPS://app.example.com", "resend"))
                 .doesNotThrowAnyException();
     }
 
@@ -120,6 +137,7 @@ class ProfileGuardTest {
         fresh.setActiveProfiles("prod");
         fresh.setProperty("app.security.ip-hash-secret", STRONG_SECRET);
         fresh.setProperty("app.base-url", "https://app.example.com");
+        fresh.setProperty("app.email.provider", "resend");
         assertThatCode(() -> new ProfileGuard(fresh, jdbc(null))).doesNotThrowAnyException();
     }
 

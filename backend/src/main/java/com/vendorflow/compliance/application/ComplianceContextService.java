@@ -28,6 +28,11 @@ public class ComplianceContextService {
     }
 
     public LocalDate todayIn(String timeZone) {
-        return LocalDate.now(clock.withZone(ZoneId.of(timeZone)));
+        return localNow(timeZone).toLocalDate();
+    }
+
+    /** The current local date-time in an organization's zone (the reminder job gates on the local time of day). */
+    public java.time.LocalDateTime localNow(String timeZone) {
+        return java.time.LocalDateTime.now(clock.withZone(ZoneId.of(timeZone)));
     }
 }

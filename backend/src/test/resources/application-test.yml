@@ -9,6 +9,9 @@ app:
     bcrypt-strength: 4
   documents:
     org-quota: 40MB
+  reminders:
+    # Tests call ReminderService directly with the MutableClock.
+    enabled: false
   outbox:
     dispatcher:
       # Tests call OutboxDispatcher.dispatchBatch() directly.

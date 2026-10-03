@@ -174,7 +174,7 @@ Rules:
 - `POST   /vendors/{id}/deactivate` · `POST /vendors/{id}/reactivate` → 200 `VendorDetail` **(implemented)**
 - `PUT    /vendors/{id}/requirements` `{ documentTypeIds: [...] }` → 200 `VendorDetail` **(implemented)**
 - `GET    /vendors/{id}/history?page=&size=` → page of `HistoryEvent` (vendor events; Phase 3 adds its documents' events) **(implemented)**
-- `POST   /vendors/{id}/document-requests` `{ documentTypeId }` → 202 (Phase 6)
+- `POST   /vendors/{id}/document-requests` `{ documentTypeId }` → 202 `DocumentRequestResult` **(implemented, Phase 6)**
 
 ### Document types (Phase 2: read · Phase 3: manage)
 - `GET /document-types` → `DocumentType[]` (active types, by `sortOrder`) — Phase 2 **(implemented)**
@@ -457,10 +457,11 @@ Rules:
   (the test prints both plans) if an organization grows by 10x or more.
 - Tests: `DashboardTest` (invariants, exclusions, ordering/tie-breaks, paging, permissions, tenant isolation, time zone),
   `ComplianceDashboardSqlTest` (shared `vectors.csv` parity vs the dashboard), `DashboardPerformanceTest` (500 vendors).
+- **Additive (Phase 6): `AttentionItem.vendorEmail: string | null`** = `vendor.email` (for the "Request document" action); selected in the same attention query (the status CASE is still only in `RequirementStatusSql`). Tested in `DashboardTest`.
 
 ### Notifications (Phase 6)
-- `POST /vendors/{id}/document-requests` `{ documentTypeId }` → 202 `DocumentRequestResult`
-- `GET  /notifications?page=&size=` → page of `NotificationView` (email activity; OWNER/ADMIN)
+- `POST /vendors/{id}/document-requests` `{ documentTypeId }` → 202 `DocumentRequestResult` **(implemented)**
+- `GET  /notifications?page=&size=` → page of `NotificationView` (email activity; OWNER/ADMIN) **(implemented)**
 
 ### Phase 6 contract details — notifications (authoritative for backend + frontend)
 **Email delivery (Resend).** `ResendEmailSender` implements the existing `EmailSender` port with a plain HTTP client
@@ -505,6 +506,31 @@ appear. Never expose payloads or tokens.
 **Migrations.** `reminder` table per DATABASE.md plus `digested_at timestamptz NULL`; any other column needed (e.g.
 `organization.last_reminder_run_date`) — add and document in DATABASE.md.
 
+**Implementation notes (Phase 6 backend) — IMPLEMENTED; differences/additions vs the contract above:**
+- **Resend facts** (official docs, checked 2026-10-04): `POST https://api.resend.com/emails`, `Authorization: Bearer`, optional `Idempotency-Key`
+  (1..256 chars, kept 24 h, replay returns the same response), body `from`, `to` (string or array), `subject`, `html`, `text`, `reply_to`
+  (string or array); success **HTTP 200 `{ "id": "..." }`**. Errors: 400 `validation_error`/`invalid_idempotency_key`, 401 `missing_api_key`,
+  403 (restricted/suspended key, unverified domain), 409 `concurrent_idempotent_requests` / `invalid_idempotent_request`, 422
+  `invalid_parameter`/`missing_required_field`, 429 `rate_limit_exceeded`/`daily_quota_exceeded`/`monthly_quota_exceeded` (default 10 req/s per team),
+  500 `application_error`, 503 `service_unavailable`. The docs do not publish an error-body schema; we only read an allowlisted `name` field.
+  Classification: 2xx SENT (id stored in `provider_message_id`); 429, 5xx, 408, 409 concurrent (or unreadable 409), timeouts/network = retryable
+  (existing backoff); every other 4xx (incl. 401/403/409 invalid_idempotent_request) = permanent, DEAD at once (`attempts = 1`). Timeouts: connect 5 s, read 10 s.
+  `Idempotency-Key` = the notification id. Config: `EMAIL_PROVIDER=logging|resend` (`app.email.provider`, default logging), `RESEND_API_KEY`, `EMAIL_FROM`;
+  prod refuses `logging`; the sender refuses to start without key/from. `EmailSender` is unchanged; permanent failures are signalled with `EmailDeliveryException(permanent=true)`.
+  Never verified against the real service (needs the owner's key + domain).
+- **Reminders**: scheduler every 15 min (`app.reminders.enabled`, `fixed-delay-ms`), per org once per org-local day at/after 07:00 (`organization.last_reminder_run_date`, see DATABASE.md V6).
+  Candidates come from `RequirementStatusSql.REQ_CTE` (so they need a vendor requirement; PENDING-review documents are included, REJECTED excluded). EXPIRED rows use `req_status = 'EXPIRED'`.
+  A digest lists only rows that still describe reality (document still CURRENT with that expiration date, not rejected, vendor active); a document appears once (EXPIRED wins over EXPIRING).
+  If an org has no verified OWNER/ADMIN the rows are marked digested without sending. Subject: `VendorFlow: 2 documents expired, 3 expiring soon` / `VendorFlow: 3 documents expiring soon` (singular `1 document expired`).
+  Digest idempotency key `digest:{orgId}:{userId}:{orgLocalDate}`; a second digest the same day (only possible via the e2e forced run) gets `...:2`.
+  Digest payload (stored in `notification.payload`, no secrets): `{ organizationName, expired: [{vendorName, documentType, expirationDate}], expiring: [{vendorName, documentType, expirationDate, daysLeft}], missingCount }`.
+- **Document request**: permission = `CONTENT_WRITE` (MEMBER, ADMIN, OWNER; VIEWER 403) — the contract's `VENDORS_WRITE` does not exist. Check order: 403, 429 (rate rule `document-request-user`, 30/min/user, counted first), 404 vendor, 400 `documentTypeId` (unknown/foreign/inactive/missing), 422 `Vendor is inactive`, 422 `Vendor has no email`, 409 `Already requested today`. Success 202 `{ requestedAt, recipientEmail }`.
+  Email: `reply_to` = requester's email; subject `{Org name} requests your {Document type}`.
+  Audit `vendor.document_requested` (entity `vendor`) metadata: `{ documentTypeId, typeCode, typeName, recipientEmail }`. **Vendor history** exposes it as
+  `changes: { typeCode: {before:null, after:"W9"}, typeName: {before:null, after:"W-9"}, recipientEmail: {before:null, after:"a@b.com"} }` and `detail = "{typeName} - {recipientEmail}"`.
+- **GET /notifications**: permission = OWNER/ADMIN (`MEMBERS_MANAGE`), others 403. Page envelope (`page` default 0, `size` default 25, clamped 1..100). Excludes EMAIL_VERIFICATION/PASSWORD_RESET (also by kind). INVITATION and all other org emails appear. `lastError` is e.g. `EmailDeliveryException: Resend HTTP 429 rate_limit_exceeded` (sanitized).
+- **E2E only**: `POST /api/test/reminders/run` (profile `e2e`, loopback only, logged in, OWNER/ADMIN, CSRF header) runs the job now for the active org ignoring the 07:00/once-per-day gates → `{ ran, newLedgerRows, digestsEnqueued }`. Absent (404) in every other profile. The e2e mailbox message JSON is now
+  `{ kind, to, subject, text, replyTo, links, receivedAt }` (`text` = plain-text body, `replyTo` nullable); `links` are still the URLs found in the text body (digest: `<APP_BASE_URL>/dashboard`). The e2e profile sets `app.reminders.enabled=false`.
 ### CSV (Phase 7)
 - `GET  /vendors/export.csv`
 - `POST /vendors/import/preview` multipart `{ file }` → `{ importId, rows: [...], errors: [...], summary }`
