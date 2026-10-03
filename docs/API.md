@@ -253,6 +253,73 @@ Rules:
 - `POST  /documents/{id}/archive`
 - `GET   /documents/{id}/download` → streamed file, `Content-Disposition: attachment`
 
+
+### Phase 3 contract details (authoritative for backend + frontend)
+```ts
+type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED";
+type DocumentState = "CURRENT" | "SUPERSEDED" | "ARCHIVED";
+type DocumentSummary = { id: string; vendorId: string; documentType: { id: string; code: string; name: string;
+  hasExpiration: boolean }; state: DocumentState; reviewStatus: ReviewStatus; issueDate: string | null;   // yyyy-MM-dd
+  expirationDate: string | null; originalFilename: string; mimeType: string; sizeBytes: number;
+  uploadedBy: { fullName: string } | null; uploadedAt: string; reviewedBy: { fullName: string } | null;
+  reviewedAt: string | null; reviewNote: string | null };
+type DocumentTypeAdmin = DocumentType & { active: boolean };          // GET /document-types?includeInactive=true
+// VendorDetail.requirements[i] gains: currentDocument: DocumentSummary | null
+// VendorDetail gains: otherDocuments: DocumentSummary[]   // CURRENT docs whose type is not a requirement
+```
+Endpoints:
+- `POST /vendors/{vendorId}/documents` multipart: `file`, `documentTypeId`, `issueDate?`, `expirationDate?` → 201 `DocumentSummary`
+- `GET  /vendors/{vendorId}/documents?includeHistory=false|true` → `DocumentSummary[]` (CURRENT only by default;
+  history adds SUPERSEDED + ARCHIVED; ordered by type sortOrder, then uploadedAt desc). Bounded: ≤ 500 rows.
+- `GET  /documents/{id}` → `DocumentSummary`
+- `PATCH /documents/{id}` `{ issueDate?, expirationDate? }` (explicit `null` clears issueDate; expirationDate cannot be
+  cleared when the type has expiration) → 200 `DocumentSummary`
+- `POST /documents/{id}/review` `{ decision: "APPROVED"|"REJECTED", note?: string }` → 200
+- `POST /documents/{id}/archive` → 200
+- `GET  /documents/{id}/download` → file stream
+- `GET  /document-types?includeInactive=true` (REQUIREMENTS_MANAGE for inactive) · `POST /document-types`
+  `{ name, hasExpiration, requiredByDefault }` → 201 · `PATCH /document-types/{id}` `{ name?, hasExpiration?,
+  requiredByDefault?, active?, sortOrder? }` → 200
+
+Rules:
+- Permissions: upload + PATCH → VENDORS_WRITE; review → DOCUMENTS_REVIEW; archive → ARCHIVE_AND_IMPORT;
+  list/get/download → DOCUMENTS_DOWNLOAD / VENDORS_VIEW (all roles); document-type management → REQUIREMENTS_MANAGE.
+- Every id is resolved within the active org: document → its vendor → org. Foreign/nonexistent → 404.
+- Upload validation, in this order (cheap first):
+  1. multipart part `file` present and non-empty → else 400 field `file`.
+  2. size ≤ 15 MB (configurable `app.documents.max-size`) → else **413**.
+  3. extension of the sanitized original filename ∈ {pdf, png, jpg, jpeg} → else **415**.
+  4. magic bytes match the extension family (PDF `%PDF-`; PNG `89 50 4E 47 0D 0A 1A 0A`; JPEG `FF D8 FF`) → else **415**.
+     Client `Content-Type` is ignored; stored `mime_type` is the detected one.
+  5. `documentTypeId` = active type of the org → else 400 field `documentTypeId`.
+  6. dates `yyyy-MM-dd`, within 1990-01-01..2100-12-31; `issueDate ≤ expirationDate`; `expirationDate` required iff
+     the type `hasExpiration` → else 400 field errors.
+- Filename sanitizing: take the last path segment (both `/` and `\`), strip control/bidi chars, collapse whitespace,
+  max 255 chars keeping the extension, fallback `document.<ext>`. Display only; never used in storage paths.
+- Storage key `org/{orgId}/doc/{documentId}` (server-generated). Object written BEFORE the DB transaction; if the
+  transaction fails the object is deleted (best effort, logged). SHA-256 computed while streaming.
+- A new upload for (vendor, type) supersedes the CURRENT one in the same transaction (vendor row locked
+  `FOR UPDATE` to serialize concurrent uploads; partial unique index is the backstop). New docs start `PENDING`.
+- Review: only CURRENT documents (else 409 "Document is not current"). `REJECTED` requires a note (1–1000 chars).
+- Archive: CURRENT or SUPERSEDED → ARCHIVED (idempotent); archiving the CURRENT doc does not promote an older one.
+- PATCH dates on SUPERSEDED/ARCHIVED documents → 409. Changing dates does not change review status; audited.
+- Download: authorization → audit `document.downloaded` → stream with `Content-Type` = stored mime,
+  `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<encoded>`,
+  `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `Content-Security-Policy: sandbox`.
+- Rate limit: uploads 30/min per client IP.
+- Audit: `document.uploaded` (metadata includes `vendorId`, type code, filename, size), `document.superseded`,
+  `document.reviewed` (decision, note), `document.dates_changed` (before/after), `document.archived`,
+  `document.downloaded`; `document_type.created/updated`. Vendor history includes events whose
+  `metadata.vendorId` = the vendor.
+- Document types: code for custom types = `CUSTOM_` + uppercase slug of the name + short suffix if taken;
+  names unique per org (case-insensitive) → 409. Deactivated types are hidden from pickers; existing requirements
+  of inactive types are ignored by compliance (Phase 4) and shown greyed in the UI.
+- Storage abstraction: `ObjectStorage` (put stream, get stream, delete, exists); `FilesystemObjectStorage` (root from
+  `app.storage.filesystem.root`; resolves key → normalized path and asserts it stays under root; atomic write via temp
+  file + move). `S3ObjectStorage` comes before Phase 11 (ADR-0007). `FileScanner` interface with no-op implementation
+  called before storing (hook for malware scanning).
+- Next.js rewrite must pass 15 MB multipart bodies (verify Next 16 proxy body limits; configure if needed).
+
 ### Dashboard (Phase 5)
 - `GET /dashboard/summary` → counts
 - `GET /dashboard/attention?page=&size=` → prioritized action items

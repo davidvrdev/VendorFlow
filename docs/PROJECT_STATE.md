@@ -3,26 +3,28 @@
 _Last updated: 2026-10-03 (session 1)_
 
 ## Current Status
-Phase 0 (Foundation) ☑ and Phase 1 (Authentication & Organizations) ☑ **done**.
-Phase 2 (Vendors) **starting**. Users can sign up, verify email, log in, reset passwords, manage the organization,
-members and invitations. No vendor/document features yet.
+Phases 0, 1 and 2 (Vendors) ☑ **done**. Phase 3 (Documents) **starting**.
+Users can sign up, manage their organization/members/invitations, and manage vendors with required document
+types. No document upload yet.
 
 ## Current Sprint
-Phase 2 — Vendors. Contract: `docs/API.md` § "Phase 2 contract details" (authoritative).
-Scope: V4 migration (`document_type` + per-org seed + backfill, `vendor`, `vendor_requirement`), document types
-(read-only), vendor CRUD, deactivate/reactivate, requirements, list with search/filter/sort/pagination,
-categories, history; UI: vendors list, create/edit, detail with requirements + history.
-Plan: backend worker + frontend worker in parallel (contract-first), then integration E2E, security review, close.
+Phase 3 — Documents. Contract: `docs/API.md` § "Phase 3 contract details" (authoritative).
+Scope: V5 migration (`document`), ObjectStorage (filesystem impl) + FileScanner hook, upload with layered validation
+(size → extension → magic bytes → type → dates), supersede, review, archive, date edits, authorized download,
+document-type management, vendor detail extended with current documents, vendor history includes document events;
+UI: upload dialog, documents per requirement, review/archive actions, history, document-types settings page.
+Plan: backend + frontend workers in parallel, then integration E2E, **security review (uploads)**, close.
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
 - Phase 0: backend + frontend foundations, CI workflow, docker compose.
+- Phase 2: document types (read + seed), vendors CRUD, requirements, list/search/filter/sort, history; UI.
 - Phase 1: identity, sessions, CSRF, verification, reset, lockout, rate limiting, absolute session lifetime,
   tenant context, RBAC, members, invitations, org settings, audit, email outbox (logging sender), e2e mailbox;
   frontend for all flows; security review + fixes.
 
 ## In Progress
-- Phase 2 (Vendors).
+- Phase 3 (Documents).
 
 ## Blocked
 - Nothing. CI has never run (no git remote) — owner must create the GitHub repo and push.
@@ -57,9 +59,9 @@ Session 1 (2026-10-03): environment inspection; ADR-0002 owner decision; design 
 See `docs/SESSION_HANDOFF.md`.
 
 ## Verification (last run, 2026-10-03)
-- Backend `./mvnw verify`: **187 tests, 0 failures** (Testcontainers Postgres, incl. real-server trusted-proxy tests).
-- Frontend: lint ✓, typecheck ✓, **137 unit tests** ✓, build ✓, Playwright smoke 5/5 ✓; `npm audit --omit=dev` 0.
-- Full-stack E2E (`SPRING_PROFILES_ACTIVE=local,e2e` backend + `E2E_FULLSTACK=1`): **13/13** ✓.
+- Backend `./mvnw verify`: **239 tests, 0 failures** (Testcontainers Postgres, incl. real-server trusted-proxy tests, N+1 guard).
+- Frontend: lint ✓, typecheck ✓, **186 unit tests** ✓, build ✓, Playwright smoke 5/5 ✓; `npm audit --omit=dev` 0.
+- Full-stack E2E (`SPRING_PROFILES_ACTIVE=local,e2e` backend + `E2E_FULLSTACK=1`): **14/14** ✓ (incl. vendor lifecycle).
 
 ## Git
 - Branch `main`, no remote. Phase 1 closing commits: `ec0bdd7 security: fix Phase 1 review findings…` + docs commit.

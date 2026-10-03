@@ -17,6 +17,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
   organization settings, audit events, transactional email outbox. UI for all of it. Full-stack E2E suite
   (13 flows) using an e2e-profile test mailbox.
 
+- **Phase 2 — Vendors**: per-organization document types (8 defaults; COI, Workers' Comp and W-9 required by
+  default), vendor create/edit/deactivate/reactivate, per-vendor required documents, list with search, filters,
+  sorting and pagination, vendor history. Full-stack E2E vendor lifecycle.
+
 ### Security
 - Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
   atomic lockout, fail-closed production configuration, control-character rejection in names, per-recipient
