@@ -1,15 +1,11 @@
 import "server-only";
 import { serverApiFetch } from "@/lib/api/server";
-import { unwrapList } from "./lists";
-import type { Invitation, Member, Organization } from "./types";
+import type { Invitation, Member, Organization, Page } from "./types";
 
 // Server Component reads for the settings pages (cookies forwarded by serverApiFetch).
 export const fetchOrganization = () => serverApiFetch<Organization>("/organization");
 
-export async function fetchMembers(): Promise<Member[]> {
-  return unwrapList(await serverApiFetch<Member[] | { items: Member[] }>("/organization/members"));
-}
+// First page only (size defaults to 50): the UI shows "Showing N of M" when there are more.
+export const fetchMembers = () => serverApiFetch<Page<Member>>("/organization/members");
 
-export async function fetchInvitations(): Promise<Invitation[]> {
-  return unwrapList(await serverApiFetch<Invitation[] | { items: Invitation[] }>("/organization/invitations"));
-}
+export const fetchInvitations = () => serverApiFetch<Page<Invitation>>("/organization/invitations");

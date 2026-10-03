@@ -1,14 +1,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { FormAlert } from "@/components/forms/form-alert";
 import { TextField } from "@/components/forms/field";
 import { SubmitButton } from "@/components/forms/submit-button";
-import { buttonVariants } from "@/components/ui/button";
 import { confirmPasswordReset } from "@/features/auth/api";
 import { PASSWORD_HELP, resetPasswordSchema, type ResetPasswordValues } from "@/features/auth/schemas";
 import { ApiError } from "@/lib/api/errors";
@@ -24,7 +23,7 @@ const requestNewLink = (
 
 export function ResetPasswordForm() {
   const { token, ready } = useHashToken();
-  const [done, setDone] = useState(false);
+  const router = useRouter();
   const [linkInvalid, setLinkInvalid] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const {
@@ -42,10 +41,12 @@ export function ResetPasswordForm() {
     setFormError(null);
     try {
       await confirmPasswordReset(token, values.newPassword);
-      setDone(true);
+      // The backend revoked every session of this user, so the next step is a fresh sign-in.
+      router.replace("/login?reset=1");
+      return;
     } catch (error) {
-      // 400 with field errors = rejected password (e.g. too common); without them = bad/expired token.
-      if (error instanceof ApiError && !error.errors?.length && [400, 404, 410].includes(error.status)) {
+      // 400 with field errors = rejected password (token NOT consumed); 400 without = bad/expired link.
+      if (error instanceof ApiError && error.status === 400 && !error.errors?.length) {
         setLinkInvalid(true);
         return;
       }
@@ -59,20 +60,6 @@ export function ResetPasswordForm() {
   }
 
   if (!ready) return <AuthCard title="Choose a new password" description="Loading…" />;
-
-  if (done) {
-    return (
-      <AuthCard title="Password updated">
-        <p role="status" className="flex items-start gap-2 text-sm">
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          Your password has been changed. Sign in with your new password.
-        </p>
-        <Link href="/login" className={buttonVariants()}>
-          Go to sign in
-        </Link>
-      </AuthCard>
-    );
-  }
 
   if (!token || linkInvalid) {
     return (

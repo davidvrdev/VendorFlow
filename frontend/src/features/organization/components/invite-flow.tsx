@@ -75,6 +75,24 @@ export function InviteFlow() {
 
   const view = selectInviteState({ tokenReady: resolved, token, lookup, session });
 
+  // Server verdicts that change which screen applies (docs/API.md): 409 = an account exists, so sign in;
+  // 403 = the session belongs to another email. Re-derive the view instead of showing a dead-end error.
+  function onAcceptError(error: unknown) {
+    if (!(error instanceof ApiError)) return;
+    if (error.status === 409) {
+      setLookup((current) => (current.status === "ok" ? { status: "ok", data: { ...current.data, accountExists: true } } : current));
+      setSession({ status: "signed-out" });
+    } else if (error.status === 403) {
+      fetchMe().then(
+        (me) => setSession({ status: "signed-in", email: me.user.email }),
+        () => undefined,
+      );
+    } else if (error.status === 404) {
+      clearStashedInviteToken();
+      setLookup({ status: "invalid" });
+    }
+  }
+
   function done() {
     clearStashedInviteToken();
     router.replace("/dashboard");
@@ -108,7 +126,7 @@ export function InviteFlow() {
       return (
         <AuthCard title="You are invited">
           <InvitationSummary invitation={view.invitation} />
-          <AcceptButton token={token!} onDone={done} />
+          <AcceptButton token={token!} onDone={done} onError={onAcceptError} />
         </AuthCard>
       );
     case "wrong-account":
@@ -149,13 +167,19 @@ export function InviteFlow() {
       return (
         <AuthCard title="You are invited">
           <InvitationSummary invitation={view.invitation} />
-          <CreateAccountForm token={token!} onDone={done} />
+          <CreateAccountForm token={token!} onDone={done} onError={onAcceptError} />
         </AuthCard>
       );
   }
 }
 
-function AcceptButton({ token, onDone }: { token: string; onDone: () => void }) {
+interface AcceptProps {
+  token: string;
+  onDone: () => void;
+  onError: (error: unknown) => void;
+}
+
+function AcceptButton({ token, onDone, onError }: AcceptProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,9 +190,10 @@ function AcceptButton({ token, onDone }: { token: string; onDone: () => void }) 
       await acceptInvitation({ token });
       onDone();
     } catch (e) {
+      onError(e);
       setError(
         errorMessage(e, {
-          403: "This invitation was sent to a different email address.",
+          403: "This invitation was sent to a different email address. Sign out and sign in with that address.",
           404: "This invitation is invalid or has expired.",
           429: "Too many attempts. Try again in a minute.",
         }),
@@ -187,7 +212,7 @@ function AcceptButton({ token, onDone }: { token: string; onDone: () => void }) 
   );
 }
 
-function CreateAccountForm({ token, onDone }: { token: string; onDone: () => void }) {
+function CreateAccountForm({ token, onDone, onError }: AcceptProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const {
     register,
@@ -202,12 +227,13 @@ function CreateAccountForm({ token, onDone }: { token: string; onDone: () => voi
       await acceptInvitation({ token, ...values });
       onDone();
     } catch (error) {
+      onError(error);
       setFormError(
         applyApiError<InviteAccountValues>(error, setError, {
           fields: ["fullName", "password"],
           statusMessages: {
             404: "This invitation is invalid or has expired.",
-            409: "An account with this email already exists. Reload this page and sign in to accept.",
+            409: "An account with this email already exists. Sign in to accept.",
             429: "Too many attempts. Try again in a minute.",
           },
         }),

@@ -16,12 +16,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { applyApiError, errorMessage } from "@/lib/forms/api-errors";
 import { formatDate } from "@/lib/format";
+import { ListCount } from "./list-count";
 import { createInvitation, revokeInvitation } from "../api";
 import { invitableRoles, ROLE_LABELS } from "../permissions";
 import { inviteFormSchema, type InviteFormValues } from "../schemas";
 import type { Invitation, Role } from "../types";
 
-export function InvitationsSection({ invitations, myRole }: { invitations: Invitation[]; myRole: Role }) {
+export function InvitationsSection({
+  invitations,
+  totalItems,
+  myRole,
+}: {
+  invitations: Invitation[];
+  totalItems: number;
+  myRole: Role;
+}) {
   return (
     <section aria-labelledby="invitations-heading" className="mt-12">
       <h2 id="invitations-heading" className="text-lg font-semibold tracking-tight">
@@ -54,6 +63,7 @@ export function InvitationsSection({ invitations, myRole }: { invitations: Invit
             </Table>
           </div>
         )}
+        <ListCount shown={invitations.length} total={totalItems} />
       </div>
     </section>
   );
@@ -86,11 +96,10 @@ function InviteForm({ myRole }: { myRole: Role }) {
       setFormError(
         applyApiError<InviteFormValues>(error, setError, {
           fields: ["email", "role"],
+          // 409 and 422 carry specific titles ("Already a member", "Invitation already pending",
+          // "Email not verified"): ApiError.detail/title is shown by applyApiError. Only 422 needs a hint.
           statusMessages: {
-            // Inviter must have a verified email (docs/API.md): say what to do, not just what failed.
             422: "Verify your own email address before inviting teammates. Use Resend email in the banner above.",
-            409: "This person has already been invited or is already a member of this organization.",
-            403: "You do not have permission to invite members.",
             429: "Too many attempts. Try again in a minute.",
           },
         }),

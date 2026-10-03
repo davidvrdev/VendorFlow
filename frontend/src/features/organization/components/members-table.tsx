@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { errorMessage } from "@/lib/forms/api-errors";
 import { formatDate } from "@/lib/format";
+import { ListCount } from "./list-count";
 import { changeMemberRole, removeMember } from "../api";
 import { assignableRoles, canManageMemberRow, ROLE_LABELS } from "../permissions";
 import type { Member, Role } from "../types";
@@ -18,12 +19,14 @@ const LAST_OWNER_MESSAGE =
 
 interface MembersTableProps {
   members: Member[];
+  totalItems: number;
   currentUserId: string;
   myRole: Role;
 }
 
-export function MembersTable({ members, currentUserId, myRole }: MembersTableProps) {
+export function MembersTable({ members, totalItems, currentUserId, myRole }: MembersTableProps) {
   return (
+    <>
     <div className="overflow-x-auto rounded-lg border">
       <Table>
         <caption className="sr-only">Organization members</caption>
@@ -51,6 +54,8 @@ export function MembersTable({ members, currentUserId, myRole }: MembersTablePro
         </TableBody>
       </Table>
     </div>
+    <ListCount shown={members.length} total={totalItems} />
+    </>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { verifyEmail } from "@/features/auth/api";
@@ -13,6 +14,7 @@ import { AuthCard } from "./auth-card";
 type Outcome = { kind: "success" } | { kind: "failed"; message: string };
 
 export function VerifyEmail() {
+  const router = useRouter();
   const { token, ready } = useHashToken();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // Verification tokens are single-use: StrictMode's double effect must not POST twice.
@@ -22,19 +24,25 @@ export function VerifyEmail() {
     if (!ready || !token || submitted.current) return;
     submitted.current = true;
     verifyEmail(token).then(
-      () => setOutcome({ kind: "success" }),
+      () => {
+        setOutcome({ kind: "success" });
+        // If the user is signed in, re-read /me so the unverified banner disappears. Next restores the
+        // URL it last navigated to on refresh (fragment included), so first make the stripped URL canonical.
+        router.replace("/verify-email");
+        router.refresh();
+      },
       (error: unknown) =>
         setOutcome({
           kind: "failed",
           message:
-            error instanceof ApiError && error.status !== 429 && error.status < 500
+            error instanceof ApiError && error.status === 400
               ? "This verification link is invalid or has expired."
               : error instanceof ApiError
-                ? error.detail ?? error.title
+                ? (error.detail ?? error.title)
                 : NETWORK_ERROR_MESSAGE,
         }),
     );
-  }, [ready, token]);
+  }, [ready, token, router]);
 
   if (!ready) return <AuthCard title="Verifying your email" description="Loading…" />;
 

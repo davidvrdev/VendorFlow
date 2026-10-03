@@ -20,9 +20,9 @@ export default async function MembersSettingsPage() {
         <h2 id="members-heading" className="mb-4 text-lg font-semibold tracking-tight">
           Members
         </h2>
-        <MembersTable members={members} currentUserId={me.user.id} myRole={role} />
+        <MembersTable members={members.items} totalItems={members.totalItems} currentUserId={me.user.id} myRole={role} />
       </section>
-      {invitations ? <InvitationsSection invitations={invitations} myRole={role} /> : null}
+      {invitations ? <InvitationsSection invitations={invitations.items} totalItems={invitations.totalItems} myRole={role} /> : null}
     </>
   );
 }

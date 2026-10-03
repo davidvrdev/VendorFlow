@@ -49,3 +49,12 @@ export interface UpdateOrganizationRequest {
   reminderOffsetsDays?: number[];
   remindersEnabled?: boolean;
 }
+
+/** Page envelope returned by every list endpoint (docs/API.md). */
+export interface Page<T> {
+  items: T[];
+  page: number;
+  size: number;
+  totalItems: number;
+  totalPages: number;
+}

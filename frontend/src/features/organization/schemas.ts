@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NAME_CHARS_MESSAGE, NO_CONTROL_CHARS } from "@/features/auth/schemas";
 import type { Organization, Role, UpdateOrganizationRequest } from "./types";
 
 const MAX_OFFSETS = 5;
@@ -22,7 +23,7 @@ export function parseReminderOffsets(text: string): OffsetsParse {
 }
 
 export const organizationFormSchema = z.object({
-  name: z.string().trim().min(1, "Enter an organization name.").max(120, "Name must be 120 characters or fewer."),
+  name: z.string().trim().min(1, "Enter an organization name.").max(120, "Name must be 120 characters or fewer.").regex(NO_CONTROL_CHARS, NAME_CHARS_MESSAGE),
   timeZone: z.string().min(1, "Choose a time zone."),
   expiringWindowDays: z
     .string()
