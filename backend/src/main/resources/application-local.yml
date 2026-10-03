@@ -1,0 +1,6 @@
+# Local development defaults; they match the root docker-compose.yml. Never used in prod.
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vendorflow}
+    username: ${DATABASE_USERNAME:vendorflow}
+    password: ${DATABASE_PASSWORD:vendorflow-local}

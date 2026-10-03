@@ -1,0 +1,8 @@
+# Production: no datasource defaults (DATABASE_* must be provided; startup fails otherwise).
+server:
+  forward-headers-strategy: framework
+
+logging:
+  structured:
+    format:
+      console: ecs

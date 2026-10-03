@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: vendorflow-api
+  profiles:
+    # "default" (not "active") so that SPRING_PROFILES_ACTIVE / tests' @ActiveProfiles replace it instead of adding to it.
+    default: local
+  datasource:
+    # No defaults here on purpose: local defaults live in application-local.yml, prod must supply env vars.
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 16MB
+
+server:
+  port: 8080
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+
+logging:
+  pattern:
+    correlation: "[%X{requestId:-}] "
