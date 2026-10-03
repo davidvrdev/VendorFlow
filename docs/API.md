@@ -33,18 +33,18 @@ Status in this file: **(planned)** until the phase that implements it marks it *
 - `POST /auth/signup` `{ email, password, fullName, organizationName }` → 201 `Me` (session started) **(implemented)**
 - `POST /auth/login` `{ email, password }` → 200 `Me` **(implemented)**
 - `POST /auth/logout` → 204 **(implemented)**
-- `POST /auth/verify-email` `{ token }` → 204
-- `POST /auth/resend-verification` → 204
-- `POST /auth/password-reset/request` `{ email }` → 202 (always)
-- `POST /auth/password-reset/confirm` `{ token, newPassword }` → 204
+- `POST /auth/verify-email` `{ token }` → 204 **(implemented)**
+- `POST /auth/resend-verification` → 204 **(implemented)**
+- `POST /auth/password-reset/request` `{ email }` → 202 (always) **(implemented)**
+- `POST /auth/password-reset/confirm` `{ token, newPassword }` → 204 **(implemented)**
 - `GET  /me` → `{ user, activeOrganization: { id, name, role }, organizations: [...] }` **(implemented)**
 - `POST /session/organization` `{ organizationId }` → 200 `Me` (membership verified) **(implemented)**
 
 ### Organization (Phase 1)
 - `GET   /organization` · `PATCH /organization` `{ name?, timeZone?, expiringWindowDays?, reminderOffsetsDays?, remindersEnabled? }` **(implemented)**
-- `GET   /organization/members` · `PATCH /organization/members/{membershipId}` `{ role }` · `DELETE /organization/members/{membershipId}`
-- `GET   /organization/invitations` · `POST /organization/invitations` `{ email, role }` · `DELETE /organization/invitations/{id}`
-- `POST  /invitations/lookup` `{ token }` (public) · `POST /invitations/accept` `{ token, fullName?, password? }`
+- `GET   /organization/members` → page of `Member` · `PATCH /organization/members/{membershipId}` `{ role }` → 200 `Member` · `DELETE /organization/members/{membershipId}` → 204 **(implemented)**
+- `GET   /organization/invitations` → page of `Invitation` (pending only) · `POST /organization/invitations` `{ email, role }` → 201 `Invitation` · `DELETE /organization/invitations/{id}` → 204 **(implemented)**
+- `POST  /invitations/lookup` `{ token }` (public) → `InvitationLookup` · `POST /invitations/accept` `{ token, fullName?, password? }` (public; session optional) → 200 `Me` **(implemented)**
 
 ### Phase 1 contract details (authoritative for backend + frontend)
 
@@ -85,9 +85,19 @@ Rules:
   `title: "No active organization"`.
 - `PATCH /organization` requires `ORG_SETTINGS_MANAGE` (OWNER, ADMIN). `timeZone` must be a valid IANA zone;
   `expiringWindowDays` 1–180; `reminderOffsetsDays` 1–5 unique values each 1–180.
-- Members: list requires `MEMBERS_VIEW` (all roles). Role change / removal require `MEMBERS_MANAGE` (OWNER, ADMIN).
-  ADMIN cannot grant, change or remove an OWNER. The last OWNER cannot be demoted or removed (**409**).
-  Any member may remove **their own** membership (leave), except the last OWNER.
+- Members (precise rules, enforced in `MembershipService`; the membership must belong to the active org, else **404**):
+  - List: `MEMBERS_VIEW` (all roles), sorted by `fullName` (case-insensitive), default size 50, max 100.
+  - **OWNER** may set any role (including OWNER) and remove anyone, subject to the last-owner rule.
+  - **ADMIN** may only act on MEMBER/VIEWER memberships and only assign MEMBER or VIEWER. Granting ADMIN/OWNER, or
+    changing/removing an ADMIN or OWNER membership → **403**.
+  - **MEMBER / VIEWER**: role changes → **403**; `DELETE` of someone else's membership → **403**; `DELETE` of their own is allowed.
+  - **Nobody can change their own role** (**403**), not even an owner: another owner has to do it.
+  - **Leaving** (`DELETE` of your own membership) is allowed for every role except the last OWNER.
+  - **Last owner**: demoting or removing the only OWNER → **409** `title: "Last owner"`. Under concurrency the org's
+    OWNER rows are locked `FOR UPDATE` first, so two owners cannot demote/remove each other and leave zero owners
+    (the loser gets 403 or 409). `PATCH` with the member's current role is a no-op 200.
+  - After leaving/removal the user's `last_active_organization_id` is cleared if it was that org, and their next request
+    has no tenant context (403 `No active organization`) — the frontend should refresh `/me` and switch org.
 - Invitations: `MEMBERS_MANAGE`; inviter must have a verified email (**422** otherwise); role ∈ ADMIN/MEMBER/VIEWER
   (only OWNER may invite ADMIN); expires in 7 days; re-inviting the same pending email → **409**; inviting an existing
   member → **409**. Revoke = `DELETE` (204).
@@ -121,6 +131,38 @@ Rules:
   (size 1–5, each 1–180, duplicates).
 - `POST /auth/resend-verification` requires a logged-in session (it takes no body); the other `/auth/*` endpoints
   listed above are public. Only `csrf`, `signup`, `login`, `logout`, `verify-email`, `password-reset/**` are public.
+
+**Implemented in Phase 1 / B2 (verification, reset, members, invitations) — details the client needs:**
+- Emailed links: `{APP_BASE_URL}/verify-email#token=…` (24 h), `/reset-password#token=…` (30 min), `/invite#token=…` (7 days).
+  Tokens are single use (verify/reset); a new link of the same kind invalidates the older ones.
+- `verify-email` (public) / `password-reset/confirm` (public): any bad token (unknown, expired, used, wrong kind) →
+  **400** `title: "Invalid or expired link"`, identical body. A valid token for an already verified user → 204.
+  `confirm` field errors (length, > 72 bytes, common, equals email) are on **`newPassword`**; a weak password does NOT
+  consume the token. `confirm` does not log in; it revokes all sessions of the user (other devices get 401) and clears
+  the lockout.
+- `resend-verification` needs a session (401 otherwise); verified user → 204 no-op; 3/min per IP → 429.
+- `password-reset/request`: always 202 with an empty body (also for unknown addresses); a
+  syntactically invalid email → 400 on `email`.
+- Page lists (`members`, `invitations`): `?page=0&size=50`; `size` is clamped to 1..100 and a negative page to 0 (no 400).
+  `Member.joinedAt` = membership creation time. `Invitation` never contains the token.
+- Invitations `POST`: role `OWNER` or unknown → 400 (field `role`); `ADMIN` by a non-owner → 403; unverified inviter →
+  **422** `Email not verified`; existing member (case-insensitive) → **409** `Already a member`; open invitation for the
+  email → **409** `Invitation already pending` (an expired, unrevoked one is replaced silently).
+- Invitations `DELETE`: pending or expired-but-unrevoked → 204; foreign, unknown, already accepted or already revoked → **404**.
+- `invitations/lookup`: 200 `InvitationLookup`, else **404** (same body for unknown/expired/revoked/accepted).
+- `invitations/accept` (public, CSRF required like every POST; send the session cookie if the user is logged in):
+  - invalid/expired/revoked/accepted token → **404** (same body as lookup).
+  - session user whose email differs → **403** `title: "Wrong account"` (the invitation stays pending).
+  - session user matches → joins (if already a member the existing role is kept, the invitation is just consumed),
+    active organization is switched to the inviting org → **200** `Me`.
+  - no session, account exists → **409** `title: "Sign in to accept"` (nothing is changed; sign in, then call accept again with the same token).
+  - no session, no account: `fullName` (1–100) and `password` required, else **400** with field errors `fullName` /
+    `password` (policy errors on `password`); creates a verified account, joins, starts a session (new `VF_SESSION` and a
+    rotated `XSRF-TOKEN` — re-read the cookie) → **200** `Me` (not 201).
+  - Two simultaneous accepts of one link: one 200, the other 404; never two memberships.
+- Rate limit `invitation` (20/min/IP) covers lookup + accept.
+- **E2E only (profile `e2e`, never prod):** `GET /api/test/mailbox?to={email}` (no auth) → `[ { kind, to, subject, links[],
+  receivedAt } ]`, oldest first, last 200 messages. Absent (401/404) in every other profile.
 
 ### Vendors (Phase 2)
 - `GET    /vendors?q=&status=&compliance=&category=&page=&size=&sort=` → page of `VendorSummary` (incl. compliance)

@@ -13,6 +13,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextHolderStrategy;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,10 +29,13 @@ public class SessionService {
 
     private final SecurityContextRepository securityContextRepository;
     private final CookieCsrfTokenRepository csrfTokenRepository;
+    private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
     private final SecurityContextHolderStrategy holder = SecurityContextHolder.getContextHolderStrategy();
 
     public SessionService(SecurityContextRepository securityContextRepository,
-            CookieCsrfTokenRepository csrfTokenRepository) {
+            CookieCsrfTokenRepository csrfTokenRepository,
+            FindByIndexNameSessionRepository<? extends Session> sessionRepository) {
+        this.sessionRepository = sessionRepository;
         this.securityContextRepository = securityContextRepository;
         this.csrfTokenRepository = csrfTokenRepository;
     }
@@ -58,6 +63,15 @@ public class SessionService {
         // Rotate the CSRF token on authentication (what Spring's CsrfAuthenticationStrategy does for form login).
         // The new XSRF-TOKEN cookie is on THIS response; clients must re-read the cookie after login/signup.
         csrfTokenRepository.saveToken(csrfTokenRepository.generateToken(request), request, response);
+    }
+
+    /**
+     * Revokes every server-side session of a user (password reset). Sessions are indexed by principal name, which is
+     * the user id. Joins the caller's transaction when there is one, so the password change and the revocation
+     * commit together.
+     */
+    public void endAllForUser(UUID userId) {
+        sessionRepository.findByPrincipalName(userId.toString()).keySet().forEach(sessionRepository::deleteById);
     }
 
     public void end(HttpServletRequest request) {

@@ -1,0 +1,14 @@
+# Full-stack Playwright runs only (SPRING_PROFILES_ACTIVE=local,e2e). Never combine with prod (ProfileGuard).
+app:
+  outbox:
+    dispatcher:
+      # Emails reach the in-memory mailbox within about a second instead of 15 s.
+      fixed-delay-ms: 500
+  rate-limit:
+    # Many tests sign up / log in from one IP; the per-IP limits would make them flaky.
+    limits:
+      login: 10000
+      signup: 10000
+      password-reset-request: 10000
+      invitation: 10000
+      resend-verification: 10000

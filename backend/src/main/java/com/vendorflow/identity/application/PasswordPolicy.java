@@ -33,23 +33,28 @@ public class PasswordPolicy {
 
     /** @throws RequestValidationException (400) with a violation on field {@code password} */
     public void validate(String password, String email) {
+        validate(password, email, "password");
+    }
+
+    /** Same rules, reporting the violation on the given request field (e.g. newPassword). */
+    public void validate(String password, String email, String field) {
         if (password == null || password.length() < MIN_LENGTH || password.length() > MAX_LENGTH) {
-            throw violation("must be between " + MIN_LENGTH + " and " + MAX_LENGTH + " characters");
+            throw violation(field, "must be between " + MIN_LENGTH + " and " + MAX_LENGTH + " characters");
         }
         if (password.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) {
-            throw violation("must be at most " + MAX_BYTES + " bytes (bcrypt limit; non-ASCII characters use several bytes)");
+            throw violation(field, "must be at most " + MAX_BYTES + " bytes (bcrypt limit; non-ASCII characters use several bytes)");
         }
         String lower = password.toLowerCase(Locale.ROOT);
         if (email != null && lower.equals(email.trim().toLowerCase(Locale.ROOT))) {
-            throw violation("must not be the same as your email");
+            throw violation(field, "must not be the same as your email");
         }
         if (common.contains(lower)) {
-            throw violation("is too common; choose something less guessable");
+            throw violation(field, "is too common; choose something less guessable");
         }
     }
 
-    private static RequestValidationException violation(String message) {
-        return new RequestValidationException(java.util.List.of(new FieldViolation("password", message)));
+    private static RequestValidationException violation(String field, String message) {
+        return new RequestValidationException(java.util.List.of(new FieldViolation(field, message)));
     }
 
     private static Set<String> load() {

@@ -67,3 +67,19 @@ Notes:
 1. `docker compose up -d postgres` (repo root)
 2. `cd backend && ./mvnw spring-boot:run`
 3. `cd frontend && npm run dev` → open http://localhost:3000
+
+### Full-stack E2E (test mailbox)
+Playwright flows that need emailed links (verify email, reset password, accept invitation) read them from an in-memory
+mailbox that exists only under the `e2e` Spring profile:
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=local,e2e ./mvnw spring-boot:run     # Git Bash; PowerShell: $env:SPRING_PROFILES_ACTIVE="local,e2e"
+# then, for any address the app emailed:
+curl "http://localhost:8080/api/test/mailbox?to=jane@example.com"
+# -> [{"kind":"EMAIL_VERIFICATION","to":"jane@example.com","subject":"...","links":["http://localhost:3000/verify-email#token=..."],"receivedAt":"..."}]
+```
+- `e2e` swaps the logging email sender for the in-memory mailbox (last 200 messages), polls the outbox every 500 ms
+  instead of 15 s, and lifts the per-IP rate limits so test runs do not trip them.
+- The endpoint is unauthenticated and returns secret links: it is registered ONLY under `e2e`, and the application
+  refuses to start if `e2e` and `prod` are both active (`ProfileGuard`). Never enable it on a shared or public host.
+- Without `e2e` (including the `test` profile) `GET /api/test/mailbox` is 401/404.

@@ -75,6 +75,10 @@ public class ApiClient {
         return perform(HttpMethod.PATCH, path, body, true);
     }
 
+    public ResultActions delete(String path) throws Exception {
+        return perform(HttpMethod.DELETE, path, null, true);
+    }
+
     /** Unsafe request WITHOUT the CSRF header (to prove it is rejected). */
     public ResultActions postWithoutCsrf(String path, Object body) throws Exception {
         return perform(HttpMethod.POST, path, body, false);

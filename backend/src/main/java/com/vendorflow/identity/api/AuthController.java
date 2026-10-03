@@ -1,6 +1,8 @@
 package com.vendorflow.identity.api;
 
 import com.vendorflow.identity.application.AuthService;
+import com.vendorflow.identity.application.EmailVerificationService;
+import com.vendorflow.identity.application.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -18,8 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final EmailVerificationService emailVerification;
+    private final PasswordResetService passwordReset;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, EmailVerificationService emailVerification,
+            PasswordResetService passwordReset) {
+        this.emailVerification = emailVerification;
+        this.passwordReset = passwordReset;
         this.authService = authService;
     }
 
@@ -50,6 +57,34 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request) {
         authService.logout(request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Public: the token in the body is the credential. 400 "Invalid or expired link" for any unusable token. */
+    @PostMapping("/verify-email")
+    public ResponseEntity<Void> verifyEmail(@Valid @RequestBody TokenRequest request) {
+        emailVerification.verify(request.token());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Authenticated (not in the public list of SecurityConfig). Takes no body. */
+    @PostMapping("/resend-verification")
+    public ResponseEntity<Void> resendVerification() {
+        emailVerification.resend();
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Always 202 with an empty body, whether or not the email is registered. */
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        passwordReset.request(request.email());
+        return ResponseEntity.accepted().build();
+    }
+
+    /** Public. Does not log the user in; all existing sessions of the user are revoked. */
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordReset.confirm(request.token(), request.newPassword());
         return ResponseEntity.noContent().build();
     }
 }

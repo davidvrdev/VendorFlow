@@ -133,6 +133,12 @@ public class OrganizationService {
         return mine.stream().findFirst().map(OrganizationSummary::id);
     }
 
+    /** Display name of any organization by id (callers have already established that it is theirs to see). */
+    @Transactional(readOnly = true)
+    public String nameOf(UUID organizationId) {
+        return load(organizationId).getName();
+    }
+
     private Organization load(UUID organizationId) {
         return organizations.findById(organizationId)
                 .orElseThrow(() -> new NotFoundException("Organization not found."));

@@ -43,4 +43,21 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     @Query("update AppUser u set u.lastActiveOrganizationId = :orgId, u.updatedAt = :now where u.id = :id")
     int updateLastActiveOrganization(@Param("id") UUID id, @Param("orgId") UUID organizationId,
             @Param("now") Instant now);
+
+    /** No-op when the user's last active organization is a different one. */
+    @Modifying
+    @Query("""
+            update AppUser u set u.lastActiveOrganizationId = null, u.updatedAt = :now
+            where u.id = :id and u.lastActiveOrganizationId = :orgId
+            """)
+    int clearLastActiveOrganization(@Param("id") UUID id, @Param("orgId") UUID organizationId,
+            @Param("now") Instant now);
+
+    /** Atomic: only the first caller flips an unverified account; returns the rows changed (0 or 1). */
+    @Modifying
+    @Query("""
+            update AppUser u set u.emailVerifiedAt = :now, u.updatedAt = :now
+            where u.id = :id and u.emailVerifiedAt is null
+            """)
+    int markEmailVerified(@Param("id") UUID id, @Param("now") Instant now);
 }

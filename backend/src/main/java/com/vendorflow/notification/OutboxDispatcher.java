@@ -69,7 +69,7 @@ public class OutboxDispatcher {
         try {
             RenderedEmail email = templates.render(n.getKind(), n.getPayload());
             String providerId = emailSender.send(new EmailMessage(n.getId(), n.getIdempotencyKey(),
-                    n.getRecipientEmail(), email.subject(), email.textBody(), email.htmlBody()));
+                    n.getRecipientEmail(), email.subject(), email.textBody(), email.htmlBody(), n.getKind()));
             n.markSent(providerId, now);
             log.info("Notification sent: id={} kind={}", n.getId(), n.getKind());
         } catch (RuntimeException e) {

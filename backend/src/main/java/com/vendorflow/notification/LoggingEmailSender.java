@@ -2,6 +2,7 @@ package com.vendorflow.notification;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
  * recipient's domain; never the subject, body, links, tokens or the full address (docs/SECURITY.md section 6).
  */
 @Component
+@Profile("!e2e")
 public class LoggingEmailSender implements EmailSender {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingEmailSender.class);

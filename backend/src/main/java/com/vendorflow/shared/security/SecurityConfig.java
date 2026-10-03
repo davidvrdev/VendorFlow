@@ -5,6 +5,8 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderNotFoundException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -38,16 +40,24 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemJsonWriter writer,
-            CookieCsrfTokenRepository csrfTokenRepository, SecurityContextRepository securityContextRepository) {
+            CookieCsrfTokenRepository csrfTokenRepository, SecurityContextRepository securityContextRepository,
+            Environment environment) {
+        boolean e2e = environment.acceptsProfiles(Profiles.of("e2e"));
         http
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                    auth
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // Explicit list instead of "/api/v1/auth/**": resend-verification needs a logged-in user.
                         .requestMatchers("/api/v1/auth/csrf", "/api/v1/auth/signup", "/api/v1/auth/login",
                                 "/api/v1/auth/logout", "/api/v1/auth/verify-email",
                                 "/api/v1/auth/password-reset/**").permitAll()
-                        .requestMatchers("/api/v1/invitations/lookup", "/api/v1/invitations/accept").permitAll()
-                        .anyRequest().authenticated())
+                        .requestMatchers("/api/v1/invitations/lookup", "/api/v1/invitations/accept").permitAll();
+                    // E2E-only test mailbox: public only under profile e2e (ProfileGuard forbids e2e + prod).
+                    if (e2e) {
+                        auth.requestMatchers("/api/test/mailbox").permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))

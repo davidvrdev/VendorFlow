@@ -97,4 +97,20 @@ public class AppUser extends UuidEntity {
     public boolean isLocked(Instant now) {
         return lockedUntil != null && lockedUntil.isAfter(now);
     }
+
+    /** Used when the mailbox is already proven (accepting an invitation sent to this address). */
+    public void markEmailVerified(Instant now) {
+        if (emailVerifiedAt == null) {
+            this.emailVerifiedAt = now;
+            this.updatedAt = now;
+        }
+    }
+
+    /** New password hash; also clears the brute-force lockout (a reset proves control of the mailbox). */
+    public void changePassword(String newPasswordHash, Instant now) {
+        this.passwordHash = newPasswordHash;
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+        this.updatedAt = now;
+    }
 }
