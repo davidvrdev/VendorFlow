@@ -52,6 +52,7 @@ spring_session, spring_session_attributes (managed by Spring Session JDBC)
 | email_verified_at | timestamptz NULL | |
 | failed_login_attempts | int NOT NULL default 0 | brute-force lockout |
 | locked_until | timestamptz NULL | |
+| last_active_organization_id | uuid NULL FK organization ON DELETE SET NULL | restores the active org at login; always re-verified against membership |
 | last_login_at, created_at, updated_at | timestamptz | |
 
 Users are global (one person can belong to several organizations).
@@ -150,8 +151,14 @@ same transaction. Nothing is overwritten. Metadata edits (dates, review) emit au
 | sent_at, created_at, updated_at | timestamptz | |
 Index: `(status, next_attempt_at)`.
 
-> Note on tokens in payload: verification/reset/invite emails need the raw token in the link. We store the raw
-> token in the payload only until the email is SENT, then the dispatcher nulls the link field. Documented in SECURITY.md.
+> Note on tokens in payload: verification/reset/invite emails need the raw token in the link. The raw token is stored
+> in the payload only until the email is SENT (or DEAD); the dispatcher then removes the secret field from the payload.
+
+### spring_session / spring_session_attributes
+Created by our own Flyway migration (copied from Spring Session JDBC's PostgreSQL schema), with
+`spring.session.jdbc.initialize-schema=never` so Flyway remains the single owner of the schema.
+The session principal name is the **user id** (not the email), so all sessions of a user can be found and deleted
+(password reset, account lock).
 
 ### subscription
 `id, organization_id UNIQUE, status CHECK IN ('TRIALING','ACTIVE','PAST_DUE','CANCELED','INCOMPLETE','UNPAID'),

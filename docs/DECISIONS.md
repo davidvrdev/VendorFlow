@@ -18,6 +18,12 @@ Major decisions get an ADR in `docs/adr/`. Small decisions are logged here, one 
 ## Small decisions
 | Date | Decision | Why |
 |---|---|---|
+| 2026-10-03 | `shadcn` is a devDependency | Only its CSS is consumed at build time; keeps its CLI dependency tree (7 high advisories) out of production |
+| 2026-10-03 | `spring.profiles.default=local` (not `active`) | Env/test profiles replace it instead of stacking |
+| 2026-10-03 | `NullRequestCache` in Spring Security | JSON API: a 401 must not create a session cookie |
+| 2026-10-03 | Stable jar name `vendorflow-api.jar` | Dockerfile independent of version bumps |
+| 2026-10-03 | Email outbox built in Phase 1 (not Phase 6) | Verification/reset/invite emails need it; avoids a throwaway sync sender |
+| 2026-10-03 | Secret tokens only in URL fragments of email links, POSTed by the page | Keeps tokens out of access logs and Referer headers |
 | 2026-10-03 | Docs and UI copy in English; chat with owner in Spanish | US market; docs are read by future agents/devs |
 | 2026-10-03 | Monorepo: `backend/`, `frontend/`, `docs/` | One place for state, one CI, atomic cross-cutting changes |
 | 2026-10-03 | npm (not pnpm) for the frontend | Already installed; no measurable benefit at this size |
