@@ -3,61 +3,66 @@
 _Last updated: 2026-10-03 (session 1)_
 
 ## Current Status
-Phase 0 (Foundation) **done**. Phase 1 (Authentication & Organizations) **in progress**.
-No end-user product features are usable yet.
+Phase 0 (Foundation) ☑ and Phase 1 (Authentication & Organizations) ☑ **done**.
+Phase 2 (Vendors) **starting**. Users can sign up, verify email, log in, reset passwords, manage the organization,
+members and invitations. No vendor/document features yet.
 
 ## Current Sprint
-Phase 1 — split into three batches:
-- **B1 (backend, running)**: V2 migration (all Phase 1 tables), Spring Session JDBC, CSRF cookie, signup/login/logout/me,
-  session org switch, TenantContextFilter, RBAC (`Permission`/`RolePermissions`/`AuthorizationService`), audit,
-  email outbox + dispatcher + LoggingEmailSender, rate limiting, lockout, GET/PATCH /organization.
-- **F1 (frontend, running in parallel)**: auth pages, guarded `(app)` layout, org switcher, settings
-  (organization, members, invitations) against the contract in `docs/API.md` § Phase 1 contract details.
-- **B2 (backend, next)**: verify-email + resend, password reset (+ invalidate all sessions), members management,
-  invitations (create/list/revoke/lookup/accept).
-Then: integrate, run full-stack E2E (`E2E_FULLSTACK=1`), security review, code review, close Phase 1.
+Phase 2 — Vendors. Contract: `docs/API.md` § "Phase 2 contract details" (authoritative).
+Scope: V4 migration (`document_type` + per-org seed + backfill, `vendor`, `vendor_requirement`), document types
+(read-only), vendor CRUD, deactivate/reactivate, requirements, list with search/filter/sort/pagination,
+categories, history; UI: vendors list, create/edit, detail with requirements + history.
+Plan: backend worker + frontend worker in parallel (contract-first), then integration E2E, security review, close.
 
 ## Completed
-- Discovery & design: docs system, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
-- Phase 0: backend (Boot 4.1.1, Flyway baseline, deny-by-default security, request ids, ProblemDetail errors,
-  Testcontainers base, Dockerfile); frontend (Next 16, shadcn, API client w/ CSRF header, status badge, shell,
-  Vitest + Playwright); CI workflow; docker compose Postgres.
+- Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
+- Phase 0: backend + frontend foundations, CI workflow, docker compose.
+- Phase 1: identity, sessions, CSRF, verification, reset, lockout, rate limiting, absolute session lifetime,
+  tenant context, RBAC, members, invitations, org settings, audit, email outbox (logging sender), e2e mailbox;
+  frontend for all flows; security review + fixes.
 
 ## In Progress
-- Phase 1 B1 + F1 (workers running in session 1).
+- Phase 2 (Vendors).
 
 ## Blocked
-- Nothing. (CI has never run: no git remote yet — owner must create the GitHub repo and push.)
+- Nothing. CI has never run (no git remote) — owner must create the GitHub repo and push.
 
 ## Next
-1. Review B1/F1, launch B2, integrate, full-stack E2E, security + code review, commit, close Phase 1.
-2. Phase 2 — Vendors.
+1. Phase 2 → 3 (Documents) → 4 (Compliance) → 5 (Dashboard) → 6 (Notifications) → 7 (CSV) → 8 (Billing)
+   → 9 (Hardening) → 10 (E2E/QA). Owner authorized chaining (see Important Context).
 
 ## Known Issues
-- JDK 25 on this Windows machine: embedded Tomcat start fails without
-  `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp` (see DEV_SETUP Troubleshooting). Tests unaffected (MockMvc).
+- Running the jar directly on Windows/JDK 25 needs `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp`
+  (`mvnw verify` / `spring-boot:run` handle it automatically via the `windows-uds-tmpdir` pom profile).
+- Playwright dev server logs "The destination stream closed early" when contexts close mid-stream — harmless.
 
 ## Technical Debt
-- `SecurityConfig` lives in `shared.security`; may move/split when identity grows (decide in Phase 1 review).
+- `MembershipRepository`/`InvitationRepository` join `AppUser` in JPQL (cross-feature read model) — accepted for
+  single-query paging/sorting by name; revisit if identity becomes a separate module.
+- Package-level cycle `audit` ↔ `organization` (via `TenantContext`). Consider moving `TenantContext` to `shared`
+  when the architecture test is added (Phase 9).
+- Rate limiter and per-recipient email throttle are in-memory/check-then-insert, per instance. Move to Postgres
+  before running >1 API instance.
+- Members/invitations UI reads only the first page (50) with "Showing N of M".
+- `SecurityConfig` lives in `shared.security`.
 
 ## Decisions Pending
 See `docs/DECISIONS.md` § Pending (hosting, pricing/plan limits, sending domain).
 
 ## Last Session
-Session 1 (2026-10-03): environment inspection; owner chose own Spring Security sessions (ADR-0002); design docs;
-Phase 0 built by two parallel Sonnet workers, reviewed, fixed (shadcn → devDependency, stable jar name,
-DEV_SETUP merge), committed. Phase 1 started.
+Session 1 (2026-10-03): environment inspection; ADR-0002 owner decision; design docs; Phase 0; Phase 1 in batches
+(B1/F1 parallel, B2, security review, SF1 fixes + F2 frontend alignment and full-stack E2E); Phase 1 closed.
 
 ## Next Session
 See `docs/SESSION_HANDOFF.md`.
 
-## Verification (last run)
-- Backend `./mvnw verify`: 15 tests, 0 failures (2026-10-03).
-- Frontend: lint ✓, typecheck ✓, 25 unit tests ✓, build ✓, Playwright smoke 1/1 ✓; `npm audit --omit=dev` 0 vulns.
-- `docker build backend` ✓.
+## Verification (last run, 2026-10-03)
+- Backend `./mvnw verify`: **187 tests, 0 failures** (Testcontainers Postgres, incl. real-server trusted-proxy tests).
+- Frontend: lint ✓, typecheck ✓, **137 unit tests** ✓, build ✓, Playwright smoke 5/5 ✓; `npm audit --omit=dev` 0.
+- Full-stack E2E (`SPRING_PROFILES_ACTIVE=local,e2e` backend + `E2E_FULLSTACK=1`): **13/13** ✓.
 
 ## Git
-- Branch `main`, no remote. Last Phase-0 commit: `afb4486 docs: close Phase 0, Phase 1 API contract, dev setup`.
+- Branch `main`, no remote. Phase 1 closing commits: `ec0bdd7 security: fix Phase 1 review findings…` + docs commit.
 
 ## Important Context
 - Machine: Windows 11, Git Bash + PowerShell. JDK 25 only (compile `release=21`, ADR-0009). Maven via `mvnw`.
@@ -67,7 +72,11 @@ See `docs/SESSION_HANDOFF.md`.
   as each phase passes its quality gates. Stop only for blocking gate failures, business decisions (pricing, plan
   limits) or owner-only inputs (Stripe test keys, Resend key + domain, GitHub remote). Phase 11+ needs the owner.
 - Tokens (verify/reset/invite) travel only in URL fragments (`#token=`) and are POSTed by the page.
-- Email outbox moved into Phase 1 (needed by verification/invite emails).
+- Role rule: ADMIN manages only MEMBER/VIEWER; granting ADMIN/OWNER or touching ADMIN/OWNER requires OWNER.
+- Testing traps: never use spring-security-test `.with(csrf())` (poisons the shared filter chain); use
+  `support/ApiClient` + `TestAccounts`. Tests moving the clock > 7 days must re-login.
+- Full-stack E2E: run backend with `./mvnw spring-boot:run -Dspring-boot.run.profiles=local,e2e`, then
+  `cd frontend && E2E_FULLSTACK=1 npx playwright test`.
 - Subagents in `.claude/agents/` load only in a new Claude Code session; in session 1 workers were launched as
   `general-purpose` + `model: sonnet` and told to follow those files.
 - Bash tool on this machine fails on large heredocs with quotes — use the Write tool for files.

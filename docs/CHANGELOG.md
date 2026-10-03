@@ -10,3 +10,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
 - Frontend foundation: Next.js 16, Tailwind 4, shadcn/ui, API client with CSRF header + safe error parsing,
   compliance status badge, app shell, Vitest + Playwright.
 - GitHub Actions CI workflow (backend verify; frontend lint/typecheck/test/build/e2e smoke).
+- **Phase 1 — Authentication & Organizations**: signup (creates organization + owner), login/logout with
+  server-side sessions in Postgres, CSRF, email verification, password reset (revokes all sessions), account
+  lockout, rate limiting, 7-day absolute session lifetime, multi-organization membership with switching,
+  roles OWNER/ADMIN/MEMBER/VIEWER enforced server-side, members management (last-owner invariant), invitations,
+  organization settings, audit events, transactional email outbox. UI for all of it. Full-stack E2E suite
+  (13 flows) using an e2e-profile test mailbox.
+
+### Security
+- Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
+  atomic lockout, fail-closed production configuration, control-character rejection in names, per-recipient
+  account email throttle, token scrubbing for undelivered emails, email redaction in stored errors.

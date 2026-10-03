@@ -2,40 +2,39 @@
 
 _Session 1 — 2026-10-03 — director: Claude Opus 5.5, workers: Claude Sonnet 5.5 (general-purpose subagents)_
 
-1. **What was the goal?**
-   Bootstrap VendorFlow: inspect environment, build the documentation/memory system, design architecture, data
-   model, API and threat model, complete Phase 0 (Foundation) and start Phase 1 (Auth & Organizations).
+1. **What was the goal?** Bootstrap VendorFlow, complete Phase 0 and Phase 1, then keep chaining MVP phases.
 
-2. **What did we complete?**
-   - All design docs + ADR-0001…0009; project subagent definitions in `.claude/agents/`.
-   - Phase 0 end to end (backend, frontend, CI workflow, docker compose), reviewed and committed.
-   - Phase 1 API contract (`docs/API.md` § Phase 1 contract details).
+2. **What did we complete?** Design docs + ADRs; Phase 0 (Foundation); Phase 1 (Auth & Organizations) including a
+   security review and all its fixes; full-stack E2E suite (13 flows); Phase 2 API contract.
 
-3. **What files changed?** See `git log --stat` from `510e48e` to HEAD. Key: `CLAUDE.md`, `docs/**`, `backend/**`,
-   `frontend/**`, `.github/workflows/ci.yml`, `docker-compose.yml`, `.env.example`.
+3. **What files changed?** `git log --stat 510e48e..HEAD`. Phase 1 lives in `backend/src/main/java/com/vendorflow/
+   {identity,organization,audit,notification,shared,e2e}` and `frontend/src/{features/auth,features/organization,
+   lib/auth,lib/forms,app/(auth),app/(app)/settings}`.
 
-4. **What tests passed?** Backend 15/15 (Testcontainers). Frontend lint/typecheck/25 unit/build/1 E2E smoke.
+4. **What tests passed?** Backend 187/187. Frontend 137 unit, lint, typecheck, build, smoke 5/5. Full-stack E2E 13/13.
 
-5. **What failed?** Nothing outstanding. CI has never executed (no remote).
+5. **What failed?** Nothing outstanding. CI never executed (no remote).
 
-6. **What remains?** Phase 1 batches B1 + F1 (in progress at time of writing — check `git status` for uncommitted
-   work from them), then B2, integration, full-stack E2E, reviews. See PROJECT_STATE § Current Sprint.
+6. **What remains?** Phase 2 (Vendors) onwards — see ROADMAP and PROJECT_STATE § Current Sprint.
 
-7. **What should happen next?**
-   - If `git status` shows uncommitted `backend/` or `frontend/` changes: they are B1/F1 worker output. Run the
-     backend and frontend test suites, review the diff against `docs/API.md` Phase 1 contract, fix, commit.
-   - Then launch B2 (verify-email, password reset, members, invitations) with a brief modeled on B1's.
+7. **What should happen next?** If `git status` shows uncommitted `backend/` or `frontend/` work, it is Phase 2
+   worker output: run both suites + full-stack E2E, review against `docs/API.md` § Phase 2 contract details, fix,
+   commit. Otherwise launch Phase 2 backend + frontend workers from that contract.
 
-8. **What decisions were made?** ADR-0001…0009 + small decisions in `docs/DECISIONS.md` (bcrypt, fragments for tokens,
-   outbox in Phase 1, shadcn as devDependency, profiles.default=local, NullRequestCache, …).
+8. **What decisions were made?** See `docs/DECISIONS.md` (Phase 1 adds: native forwarded headers with trusted
+   proxies, normalized rate-limit paths, SQL-atomic lockout, fail-closed ProfileGuard, @PlainText, email throttle,
+   token scrubbing, 7-day absolute sessions, loopback-only mailbox, ADMIN role rule).
 
-9. **What risks remain?** Spring Boot 4 / Security 7 APIs are new — verify against official docs. Rate limiting is
-   in-memory (single instance). CI unverified until pushed. JDK 25 loopback issue for real server starts on Windows.
+9. **What risks remain?** Per-instance rate limiting; trusted-proxy config must match the real deployment
+   (SECURITY.md §9); CI unverified until pushed; sessionStorage invite token during sign-in detour (needs CSP, Phase 9).
 
 10. **Commands the next session should run first**
     ```bash
-    git status && git log --oneline -10
+    git status && git log --oneline -15
     docker compose up -d postgres
     cd backend && ./mvnw -q verify
     cd ../frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build
+    # full stack E2E (two terminals):
+    cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local,e2e
+    cd frontend && E2E_FULLSTACK=1 npx playwright test
     ```
