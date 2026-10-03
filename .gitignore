@@ -1,0 +1,40 @@
+# --- Secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+
+# --- Backend (Maven) ---
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/storage-data/
+
+# --- Frontend (Node / Next.js) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo
+
+# --- Local data ---
+.data/
+*.log
+
+# --- Claude Code local-only settings ---
+.claude/settings.local.json
