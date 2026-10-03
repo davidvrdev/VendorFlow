@@ -24,6 +24,8 @@ interface ConfirmDialogProps {
   onConfirm: () => Promise<void>;
   /** Turns a thrown value into the message shown inside the dialog. */
   describeError: (error: unknown) => string;
+  /** Visual weight of the confirm button; reversible actions (e.g. reactivate) use "default". */
+  confirmVariant?: "destructive" | "default";
 }
 
 /** Destructive-action confirmation (Radix AlertDialog: focus trap, Esc to cancel, focus returns to trigger). */
@@ -36,6 +38,7 @@ export function ConfirmDialog({
   pendingLabel,
   onConfirm,
   describeError,
+  confirmVariant = "destructive",
 }: ConfirmDialogProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +74,7 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
+            variant={confirmVariant}
             disabled={pending}
             aria-busy={pending}
             onClick={(event) => {
