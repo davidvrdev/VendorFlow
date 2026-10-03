@@ -79,4 +79,49 @@ describe("apiFetch", () => {
     await expect(apiFetch("//evil.example/x")).rejects.toThrow();
     await expect(apiFetch("https://evil.example/x")).rejects.toThrow();
   });
+
+  it("primes CSRF with GET /auth/csrf once when the cookie is missing, then sends the token", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url === "/api/v1/auth/csrf") {
+        document.cookie = "XSRF-TOKEN=fresh; path=/";
+        return new Response(null, { status: 204 });
+      }
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/auth/login", { method: "POST", json: { email: "a@b.co" } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [primeUrl, primeInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(primeUrl).toBe("/api/v1/auth/csrf");
+    expect(primeInit.method).toBe("GET");
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect((init.headers as Headers).get(CSRF_HEADER)).toBe("fresh");
+  });
+
+  it("does not prime when the cookie exists or the method is safe", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/me");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    document.cookie = "XSRF-TOKEN=have; path=/";
+    await apiFetch("/auth/logout", { method: "POST" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one priming request between concurrent unsafe calls", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url === "/api/v1/auth/csrf") document.cookie = "XSRF-TOKEN=shared; path=/";
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await Promise.all([apiFetch("/a", { method: "POST" }), apiFetch("/b", { method: "POST" })]);
+
+    const primes = fetchMock.mock.calls.filter(([url]) => url === "/api/v1/auth/csrf");
+    expect(primes).toHaveLength(1);
+  });
 });

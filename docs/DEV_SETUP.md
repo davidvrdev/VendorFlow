@@ -56,7 +56,12 @@ Notes:
   Next.js docs in `node_modules/next/dist/docs/` before using Next APIs — Next 16 differs from older versions
   (async `cookies()`, `retry()` in `error.tsx`, typed `LayoutProps`).
 - After `npx shadcn add <component>`, check imports use `@/lib/utils` (shadcn 4.21 once generated `from "cn"`).
-- `shadcn` is a devDependency: only its CSS is used, at build time.
+- `shadcn` is a devDependency: only its CSS is used, at build time. `npx shadcn add` may also add bogus `cn` / unneeded
+  `next-themes` dependencies to package.json: remove them (`npm uninstall cn next-themes`) and keep `@/lib/utils` imports.
+- Next 16 uses `src/proxy.ts` (not middleware.ts). It only redirects anonymous visitors of app pages to `/login` (UX);
+  `requireMe()` in `(app)/layout.tsx` and the backend are authoritative. Keep its `matcher` in sync with `src/app/(app)`.
+- Full-stack E2E (`e2e/auth.spec.ts`) is skipped unless `E2E_FULLSTACK=1` and backend + Postgres are running.
+- If `tsc` complains about stale `.next/dev/types` after a route is removed/moved, delete `frontend/.next/dev/types`.
 
 ## Full local stack
 1. `docker compose up -d postgres` (repo root)

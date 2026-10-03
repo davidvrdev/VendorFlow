@@ -5,6 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/features/auth/components/user-menu";
+import { VerifyEmailBanner } from "@/features/auth/components/verify-email-banner";
+import type { Me } from "@/features/auth/types";
+import type { OrganizationRef } from "@/features/organization/types";
+import { OrgSwitcher } from "@/features/organization/components/org-switcher";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
@@ -17,7 +22,13 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+interface AppShellProps {
+  me: Me;
+  activeOrganization: OrganizationRef;
+  children: ReactNode;
+}
+
+export function AppShell({ me, activeOrganization, children }: AppShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -40,8 +51,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="sr-only">{menuOpen ? "Close menu" : "Open menu"}</span>
           </Button>
         </div>
-        {/* On mobile the nav collapses under the top bar; from md up it is always visible. */}
-        <nav id="primary-nav" aria-label="Primary" className={cn("px-2 pb-3 md:block md:pb-0", menuOpen ? "block" : "hidden")}>
+        {/* On mobile everything below the top bar collapses; from md up it is always visible. */}
+        <div className={cn("flex-col gap-3 px-2 pb-3 md:flex md:h-[calc(100%-3.5rem)] md:pb-3", menuOpen ? "flex" : "hidden")}>
+        <OrgSwitcher active={activeOrganization} organizations={me.organizations} />
+        <nav id="primary-nav" aria-label="Primary" className="flex-1">
           <ul className="flex flex-col gap-1">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
               const active = isActive(pathname, href);
@@ -64,10 +77,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             })}
           </ul>
         </nav>
+        <UserMenu user={me.user} />
+        </div>
       </aside>
-      <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-8 outline-none sm:px-8">
-        {children}
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {me.user.emailVerified ? null : <VerifyEmailBanner />}
+        <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-8 outline-none sm:px-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

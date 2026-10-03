@@ -51,6 +51,31 @@ export function buildHeaders(
   return headers;
 }
 
+let csrfPriming: Promise<void> | null = null;
+
+/**
+ * Make sure an XSRF-TOKEN cookie exists before an unsafe request (first visit, expired cookie).
+ * Concurrent callers share one in-flight request. Failure is swallowed: the real request then
+ * fails with the server's own 403, which is the honest error to show.
+ */
+async function primeCsrf(): Promise<void> {
+  csrfPriming ??= fetch(toApiPath("/auth/csrf"), {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      csrfPriming = null;
+    });
+  await csrfPriming;
+}
+
+function currentCookies(): string {
+  return typeof document === "undefined" ? "" : document.cookie;
+}
+
 /**
  * Browser-side API call. `path` is relative to /api/v1 (e.g. "/vendors"). Same-origin, so the
  * session cookie travels automatically; no token is ever stored in JS-accessible storage.
@@ -59,13 +84,15 @@ export async function apiFetch<T = void>(path: string, init: ApiRequestInit = {}
   const { json, body, headers: initHeaders, method: initMethod, ...rest } = init;
   const method = (initMethod ?? "GET").toUpperCase();
   const hasJsonBody = json !== undefined;
-  const cookies = typeof document === "undefined" ? "" : document.cookie;
 
+  if (isUnsafeMethod(method) && !readCookie(CSRF_COOKIE, currentCookies())) await primeCsrf();
+
+  // Read the cookie fresh right before sending: responses may have rotated the token.
   const response = await fetch(toApiPath(path), {
     ...rest,
     method,
     credentials: "same-origin",
-    headers: buildHeaders(method, initHeaders, hasJsonBody, cookies),
+    headers: buildHeaders(method, initHeaders, hasJsonBody, currentCookies()),
     body: hasJsonBody ? JSON.stringify(json) : body,
   });
 
