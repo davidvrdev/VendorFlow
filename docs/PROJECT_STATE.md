@@ -3,15 +3,15 @@
 _Last updated: 2026-10-03 (session 1)_
 
 ## Current Status
-Phases 0–3 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents). Phase 4 (Compliance engine) **starting**.
+Phases 0–4 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents, Compliance). Phase 5 (Dashboard) **starting**.
 Users can manage organizations/members, vendors, required document types, and upload/review/archive/download
-vendor documents. Compliance status is not computed yet.
+vendor documents, and see derived compliance per requirement and per vendor (org time zone) with filters/sorting.
 
 ## Current Sprint
-Phase 4 — Compliance engine. Contract: `docs/API.md` § "Phase 4 contract details" (authoritative).
-Scope: pure `ComplianceCalculator`; SQL implementation in vendor list/detail with shared test vectors (Java == SQL);
-org time zone for "today"; `compliance` on VendorSummary/VendorDetail; per-requirement status; list filter/sort by
-compliance; UI: status badges in list + detail, compliance filter. Plan: backend + frontend in parallel, integrate.
+Phase 5 — Dashboard. Contract: `docs/API.md` § "Phase 5 contract details" (authoritative).
+Scope: `GET /dashboard/summary` + `GET /dashboard/attention` reusing ONE shared per-requirement SQL builder (extracted
+from the Phase 4 vendor list query); performance test with 500 vendors; UI: dashboard with summary tiles linking to
+filtered vendor lists and a prioritized "Needs attention" list with one-click actions; empty/onboarding states.
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
@@ -23,9 +23,11 @@ compliance; UI: status badges in list + detail, compliance filter. Plan: backend
 - Phase 3: documents (layered upload validation, filesystem storage with traversal-safe keys, supersede, review,
   archive, date edits, attachment downloads), document-type management, storage quota, per-user upload limit,
   header-only CSRF; UI for all; security review + fixes.
+- Phase 4: pure ComplianceCalculator + single-query SQL aggregation with 38 shared Java/SQL vectors, org time zone
+  "today", compliance filter/sorts, per-requirement status and days to expiry, next-action-first UI.
 
 ## In Progress
-- Phase 4 (Compliance engine).
+- Phase 5 (Dashboard).
 
 ## Blocked
 - Nothing. CI has never run (no git remote) — owner must create the GitHub repo and push.
@@ -76,9 +78,9 @@ Phase 2 (vendors) closed; Phase 3 (documents) closed after upload security revie
 See `docs/SESSION_HANDOFF.md`.
 
 ## Verification (last run, 2026-10-03)
-- Backend `./mvnw verify`: **334 tests, 0 failures** (Testcontainers Postgres; real-server tests for trusted proxy, upload size, header-only CSRF).
-- Frontend: lint ✓, typecheck ✓, **252 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
-- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **15/15** ✓ functionally (vendors spec re-run alone after a total-duration timeout under machine load).
+- Backend `./mvnw verify`: **386 tests, 0 failures** (incl. 38 compliance vectors run against Java and SQL).
+- Frontend: lint ✓, typecheck ✓, **278 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
+- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **16/16** ✓ in one run (incl. compliance lifecycle).
 
 ## Git
 - Branch `main`, no remote. Phase 3 closing commits: `5f63856 security: fix Phase 3 review findings…`, `3c52019 test(e2e)…` + docs commit.

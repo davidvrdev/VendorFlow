@@ -399,8 +399,40 @@ Org setting changes (`expiringWindowDays`, `timeZone`) apply immediately (nothin
   indexes (`document_current_uq`, `vendor_requirement_vendor_type_uq`); revisit with EXPLAIN when org size warrants.
 
 ### Dashboard (Phase 5)
-- `GET /dashboard/summary` → counts
-- `GET /dashboard/attention?page=&size=` → prioritized action items
+- `GET /dashboard/summary` → `DashboardSummary`
+- `GET /dashboard/attention?page=&size=` → page of `AttentionItem` (prioritized action list)
+
+### Phase 5 contract details — dashboard (authoritative for backend + frontend)
+Answers in one screen: how many vendors, how many compliant, what is missing/expired/expiring, what needs action today.
+Scope: **ACTIVE vendors** and **active document types** only. Same rules and same "today" (org time zone) as Phase 4
+— reuse the Phase 4 SQL (extract the per-requirement CTE into one shared builder used by the vendor list AND the
+dashboard; never duplicate the status CASE expression).
+```ts
+type DashboardSummary = {
+  today: string;                     // yyyy-MM-dd in the org time zone (what "today" meant for these numbers)
+  expiringWindowDays: number;
+  vendors: { active: number; compliant: number; attention: number; nonCompliant: number; noRequirements: number };
+  documents: { missing: number; expired: number; expiring: number; reviewRequired: number };   // requirement counts
+};
+type AttentionAction = "UPLOAD" | "UPLOAD_RENEWAL" | "REVIEW";
+type AttentionItem = {
+  vendorId: string; vendorName: string;
+  documentTypeId: string; documentTypeName: string;
+  status: "MISSING" | "EXPIRED" | "EXPIRING" | "REVIEW_REQUIRED";
+  documentId: string | null;                 // CURRENT document if any (null for MISSING without a document)
+  expirationDate: string | null; daysUntilExpiration: number | null;
+  action: AttentionAction;                   // MISSING/EXPIRED → UPLOAD, EXPIRING → UPLOAD_RENEWAL, REVIEW_REQUIRED → REVIEW
+};
+```
+Rules:
+- `vendors.compliant + attention + nonCompliant = active` (vendors with no requirements count as compliant AND in
+  `noRequirements`).
+- Attention order (most urgent first): EXPIRED (most overdue first) → MISSING (vendor name, then type sortOrder) →
+  EXPIRING (soonest first) → REVIEW_REQUIRED (oldest upload first); tie-break vendor id, type id. Stable paging.
+  Default size 10, max 100. OK requirements never appear.
+- Permission: `VENDORS_VIEW` (all roles). Tenant-scoped like everything else.
+- Performance: both endpoints are one query each (+ count for the page); a test seeds 500 vendors × 6 requirements
+  (≈3,000 documents) and asserts bounded statement count and a generous latency budget.
 
 ### CSV (Phase 7)
 - `GET  /vendors/export.csv`

@@ -23,6 +23,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
 - **Phase 3 — Documents**: upload PDF/PNG/JPG up to 15 MB per vendor requirement with server-side content
   validation, automatic supersede with history, review (approve/reject with note), date edits, archive, authorized
   attachment downloads, custom document types, per-organization storage quota.
+- **Phase 4 — Compliance engine**: per-requirement status (Missing, Expired, Needs review, Expiring soon, OK) and
+  vendor status (Compliant, Needs attention, Non-compliant) derived live in the organization's time zone;
+  compliance column, filter and sorting in the vendor list; status and days to expiry per requirement.
 
 ### Security
 - Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
