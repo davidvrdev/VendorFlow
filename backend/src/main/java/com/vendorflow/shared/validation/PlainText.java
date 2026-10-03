@@ -23,6 +23,9 @@ import java.lang.annotation.RetentionPolicy;
 @Constraint(validatedBy = PlainTextValidator.class)
 public @interface PlainText {
 
+    /** Multi-line free text (notes): also allows LF, CR and TAB. Every other control/format character stays forbidden. */
+    boolean allowLineBreaks() default false;
+
     String message() default "must not contain control or invisible formatting characters";
 
     Class<?>[] groups() default {};

@@ -11,3 +11,8 @@ app:
     dispatcher:
       # Tests call OutboxDispatcher.dispatchBatch() directly.
       enabled: false
+spring:
+  jpa:
+    properties:
+      # Lets tests count SQL statements (N+1 guard, see VendorListQueryCountTest).
+      hibernate.generate_statistics: true

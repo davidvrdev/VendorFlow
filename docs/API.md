@@ -165,19 +165,19 @@ Rules:
   receivedAt } ]`, oldest first, last 200 messages. Absent (401/404) in every other profile.
 
 ### Vendors (Phase 2)
-- `GET    /vendors?q=&status=&category=&page=&size=&sort=` → page of `VendorSummary`
+- `GET    /vendors?q=&status=&category=&page=&size=&sort=` → page of `VendorSummary` **(implemented)**
   (`compliance` filter + compliance fields are added in Phase 4)
-- `GET    /vendors/categories` → `string[]` distinct non-empty categories of the org, sorted (for the filter)
-- `POST   /vendors` → 201 `VendorDetail`
-- `GET    /vendors/{id}` → `VendorDetail`
-- `PUT    /vendors/{id}` → 200 `VendorDetail` (full replacement of the editable fields)
-- `POST   /vendors/{id}/deactivate` · `POST /vendors/{id}/reactivate` → 200 `VendorDetail`
-- `PUT    /vendors/{id}/requirements` `{ documentTypeIds: [...] }` → 200 `VendorDetail`
-- `GET    /vendors/{id}/history?page=&size=` → page of `HistoryEvent` (vendor events; Phase 3 adds its documents' events)
+- `GET    /vendors/categories` → `string[]` distinct non-empty categories of the org, sorted (for the filter) **(implemented)**
+- `POST   /vendors` → 201 `VendorDetail` **(implemented)**
+- `GET    /vendors/{id}` → `VendorDetail` **(implemented)**
+- `PUT    /vendors/{id}` → 200 `VendorDetail` (full replacement of the editable fields) **(implemented)**
+- `POST   /vendors/{id}/deactivate` · `POST /vendors/{id}/reactivate` → 200 `VendorDetail` **(implemented)**
+- `PUT    /vendors/{id}/requirements` `{ documentTypeIds: [...] }` → 200 `VendorDetail` **(implemented)**
+- `GET    /vendors/{id}/history?page=&size=` → page of `HistoryEvent` (vendor events; Phase 3 adds its documents' events) **(implemented)**
 - `POST   /vendors/{id}/document-requests` `{ documentTypeId }` → 202 (Phase 6)
 
 ### Document types (Phase 2: read · Phase 3: manage)
-- `GET /document-types` → `DocumentType[]` (active types, by `sortOrder`) — Phase 2
+- `GET /document-types` → `DocumentType[]` (active types, by `sortOrder`) — Phase 2 **(implemented)**
 - `POST /document-types` · `PATCH /document-types/{id}` — Phase 3
 
 ### Phase 2 contract details (authoritative for backend + frontend)
@@ -216,6 +216,34 @@ Rules:
   `vendor.reactivated`, `vendor.requirements_changed` (`added`/`removed` type codes).
 - New organizations get the 8 default document types (DATABASE.md § document_type); existing orgs are backfilled by
   the Phase 2 migration.
+
+**Implementation notes (Phase 2 backend; where behavior is more specific than, or differs from, the text above):**
+- Permission names in code: `VENDORS_VIEW` = `DATA_VIEW`, `VENDORS_WRITE` = `CONTENT_WRITE` (existing Phase 1 enum).
+- A malformed (non-UUID) id in the path → **400** (Spring's type-mismatch handling, same as membership/invitation ids);
+  a well-formed id that is foreign or nonexistent → 404.
+- `notes` may contain line breaks (LF, CR, TAB); every other control/format/bidi character is rejected there too.
+  The other text fields reject all control/format characters (a trailing/leading newline is stripped, not rejected).
+- `phone`: `[0-9+().\- ]`, `x` and `ext` (case-insensitive), ≤ 40 chars; validation runs after stripping.
+- Validation error `field` names: `companyName`, `contactName`, `email`, `phone`, `category`, `notes`, `documentTypeIds`,
+  `sort`, `status`. Requirement errors are a single `documentTypeIds` violation (same body for foreign, unknown, inactive).
+- `PUT /vendors/{id}` that changes nothing → 200 with the current vendor, no audit event, `updatedAt` unchanged.
+  `PUT …/requirements` with the same set → same (no event). A requirement whose type was later deactivated is dropped
+  when absent from `documentTypeIds` (inactive ids cannot be sent), so clients should send the ids they display.
+- List: `q` is stripped; blank `q`/`category` = no filter; `sort` without direction = `asc`, `sort=` (blank) = default;
+  `companyName` sorts case-insensitively; every sort ends with `id` as tie-break. `size` is **clamped** to 1..100
+  (default 25), negative `page` → 0 (no 400), consistent with Phase 1 lists. `requirementCount` counts all stored
+  requirements. LIKE escaping uses `!` as the escape character (`%`, `_`, `!` are literal).
+- `POST /vendors` returns `VendorDetail` with `requirements` in `sortOrder`; `requirementCount` = `requirements.length`.
+- Audit rows (`entity_type = "vendor"`) and the History `changes` mapping:
+  - `vendor.created` metadata `{companyName, requirements: [codes]}` → `changes: null`.
+  - `vendor.updated` metadata `{changes: {field: {before, after}}}` (changed fields only) → passed through.
+  - `vendor.deactivated` / `vendor.reactivated` metadata `{changes: {status: {before, after}}}` → passed through.
+  - `vendor.requirements_changed` metadata `{added: [codes], removed: [codes]}` → exposed as
+    `changes: { added: {before: null, after: [codes]}, removed: {before: [codes], after: null} }` (a key is omitted when
+    its list is empty), so every `changes` value keeps the `{before, after}` shape.
+  - Phase 1 `organization.updated` already used `{changes: {field: {before, after}}}`; membership events use a flat
+    `{before, after}` and are not vendor history.
+  - `actor` is null when the actor is unknown. Events are newest first (`createdAt desc, id desc`).
 
 ### Documents (Phase 3)
 - `POST  /vendors/{vendorId}/documents` multipart `{ file, documentTypeId, issueDate?, expirationDate? }` → 201

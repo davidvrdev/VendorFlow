@@ -203,3 +203,13 @@ metadata jsonb (before/after for changed fields; no secrets, no document content
   rewritten or cascaded away; deleting an org/user is blocked until a retention policy exists.
 - `notification` also has `UNIQUE (organization_id, id)` (tenant-table convention, organization may be NULL).
 - Composite FKs `(organization_id, x_id)` are not used yet in V2: no tenant child table exists until Phase 2 (vendor).
+
+## 7. Implementation notes (V4, Phase 2)
+- `V4__document_types_and_vendors.sql` creates document_type, vendor, vendor_requirement and backfills the 8 default
+  types for every existing organization (new organizations are seeded by `DocumentTypeService.seedDefaults`, called from
+  a synchronous `OrganizationCreatedEvent` listener in the signup transaction; keep both lists in sync).
+- Index names: `vendor_org_company_name_lower_uq` (unique `(organization_id, lower(company_name))`; the service maps its
+  violation to 409), `vendor_org_status_idx`, `vendor_requirement_org_type_idx` (+ `UNIQUE (vendor_id, document_type_id)`).
+- `vendor.created_by_user_id` is `ON DELETE SET NULL` (like `invitation.invited_by_user_id`); the composite FKs of
+  `vendor_requirement` are `ON DELETE RESTRICT`.
+- CHECKs mirror the API limits (company_name 1..200, contact_name 120, email 254, phone 40, category 60, notes 5000).

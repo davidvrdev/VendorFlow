@@ -5,6 +5,7 @@ import com.vendorflow.organization.api.OrganizationView;
 import com.vendorflow.organization.api.UpdateOrganizationRequest;
 import com.vendorflow.organization.domain.Membership;
 import com.vendorflow.organization.domain.Organization;
+import com.vendorflow.organization.domain.OrganizationCreatedEvent;
 import com.vendorflow.organization.domain.OrganizationSummary;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.organization.domain.Role;
@@ -26,6 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,15 +45,18 @@ public class OrganizationService {
     private final AuthorizationService authorization;
     private final AuditService audit;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public OrganizationService(OrganizationRepository organizations, MembershipRepository memberships,
-            TenantContext tenantContext, AuthorizationService authorization, AuditService audit, Clock clock) {
+            TenantContext tenantContext, AuthorizationService authorization, AuditService audit, Clock clock,
+            ApplicationEventPublisher events) {
         this.organizations = organizations;
         this.memberships = memberships;
         this.tenantContext = tenantContext;
         this.authorization = authorization;
         this.audit = audit;
         this.clock = clock;
+        this.events = events;
     }
 
     /** Called by signup inside its transaction (an organization never exists without an OWNER). */
@@ -62,6 +67,7 @@ public class OrganizationService {
         memberships.save(new Membership(org.getId(), ownerUserId, Role.OWNER, now));
         audit.record(org.getId(), ownerUserId, "organization.created", "organization", org.getId(),
                 Map.of("name", org.getName()));
+        events.publishEvent(new OrganizationCreatedEvent(org.getId()));
         return org.getId();
     }
 

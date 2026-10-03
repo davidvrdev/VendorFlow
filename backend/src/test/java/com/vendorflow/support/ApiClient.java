@@ -75,6 +75,10 @@ public class ApiClient {
         return perform(HttpMethod.PATCH, path, body, true);
     }
 
+    public ResultActions put(String path, Object body) throws Exception {
+        return perform(HttpMethod.PUT, path, body, true);
+    }
+
     public ResultActions delete(String path) throws Exception {
         return perform(HttpMethod.DELETE, path, null, true);
     }
