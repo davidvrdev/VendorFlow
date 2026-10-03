@@ -76,6 +76,11 @@ Rules:
   `detail: "Invalid email or password."`. Active org = `app_user.last_active_organization_id` if still a member, else
   first membership by org name, else null. Session id is rotated.
 - `logout`: invalidates the server session, clears cookie. 204 even if not logged in.
+- `POST /session/organization` for an org the user is not a member of (or nonexistent) → **404**.
+- CSRF: every unsafe request (including login/signup) needs `X-XSRF-TOKEN` = `XSRF-TOKEN` cookie. If the cookie is
+  missing, the client first calls `GET /auth/csrf`. Responses that rotate the token set a fresh `XSRF-TOKEN` cookie;
+  the client always reads the cookie right before each request. Missing/invalid token → **403**.
+- Session cookie: `VF_SESSION` (HttpOnly, SameSite=Lax, Secure in prod), idle timeout 8h.
 - Unauthenticated access to protected endpoints → 401. Authenticated with no active org on a tenant endpoint → 403
   `title: "No active organization"`.
 - `PATCH /organization` requires `ORG_SETTINGS_MANAGE` (OWNER, ADMIN). `timeZone` must be a valid IANA zone;
