@@ -20,8 +20,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
 - **Phase 2 — Vendors**: per-organization document types (8 defaults; COI, Workers' Comp and W-9 required by
   default), vendor create/edit/deactivate/reactivate, per-vendor required documents, list with search, filters,
   sorting and pagination, vendor history. Full-stack E2E vendor lifecycle.
+- **Phase 3 — Documents**: upload PDF/PNG/JPG up to 15 MB per vendor requirement with server-side content
+  validation, automatic supersede with history, review (approve/reject with note), date edits, archive, authorized
+  attachment downloads, custom document types, per-organization storage quota.
 
 ### Security
 - Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
   atomic lockout, fail-closed production configuration, control-character rejection in names, per-recipient
   account email throttle, token scrubbing for undelivered emails, email redaction in stored errors.
+- Phase 3 upload security review findings fixed: per-organization storage quota, per-user upload rate limit,
+  CSRF token accepted only from the request header, HEAD download not audited, startup warning without malware scanner.

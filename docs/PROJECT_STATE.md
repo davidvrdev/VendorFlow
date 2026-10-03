@@ -3,28 +3,29 @@
 _Last updated: 2026-10-03 (session 1)_
 
 ## Current Status
-Phases 0, 1 and 2 (Vendors) ☑ **done**. Phase 3 (Documents) **starting**.
-Users can sign up, manage their organization/members/invitations, and manage vendors with required document
-types. No document upload yet.
+Phases 0–3 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents). Phase 4 (Compliance engine) **starting**.
+Users can manage organizations/members, vendors, required document types, and upload/review/archive/download
+vendor documents. Compliance status is not computed yet.
 
 ## Current Sprint
-Phase 3 — Documents. Contract: `docs/API.md` § "Phase 3 contract details" (authoritative).
-Scope: V5 migration (`document`), ObjectStorage (filesystem impl) + FileScanner hook, upload with layered validation
-(size → extension → magic bytes → type → dates), supersede, review, archive, date edits, authorized download,
-document-type management, vendor detail extended with current documents, vendor history includes document events;
-UI: upload dialog, documents per requirement, review/archive actions, history, document-types settings page.
-Plan: backend + frontend workers in parallel, then integration E2E, **security review (uploads)**, close.
+Phase 4 — Compliance engine. Contract: `docs/API.md` § "Phase 4 contract details" (authoritative).
+Scope: pure `ComplianceCalculator`; SQL implementation in vendor list/detail with shared test vectors (Java == SQL);
+org time zone for "today"; `compliance` on VendorSummary/VendorDetail; per-requirement status; list filter/sort by
+compliance; UI: status badges in list + detail, compliance filter. Plan: backend + frontend in parallel, integrate.
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
 - Phase 0: backend + frontend foundations, CI workflow, docker compose.
-- Phase 2: document types (read + seed), vendors CRUD, requirements, list/search/filter/sort, history; UI.
 - Phase 1: identity, sessions, CSRF, verification, reset, lockout, rate limiting, absolute session lifetime,
   tenant context, RBAC, members, invitations, org settings, audit, email outbox (logging sender), e2e mailbox;
   frontend for all flows; security review + fixes.
+- Phase 2: document types (read + seed), vendors CRUD, requirements, list/search/filter/sort, history; UI.
+- Phase 3: documents (layered upload validation, filesystem storage with traversal-safe keys, supersede, review,
+  archive, date edits, attachment downloads), document-type management, storage quota, per-user upload limit,
+  header-only CSRF; UI for all; security review + fixes.
 
 ## In Progress
-- Phase 3 (Documents).
+- Phase 4 (Compliance engine).
 
 ## Blocked
 - Nothing. CI has never run (no git remote) — owner must create the GitHub repo and push.
@@ -37,6 +38,12 @@ Plan: backend + frontend workers in parallel, then integration E2E, **security r
 - Running the jar directly on Windows/JDK 25 needs `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp`
   (`mvnw verify` / `spring-boot:run` handle it automatically via the `windows-uds-tmpdir` pom profile).
 - Playwright dev server logs "The destination stream closed early" when contexts close mid-stream — harmless.
+- **Dev machine resource exhaustion (2026-10-03 evening)**: with ~5 GB commit memory free, vitest workers and
+  Chromium failed to start and Docker/WSL slowed ~5x. Not a code issue. Use `npx vitest run --maxWorkers=2`; close
+  other heavy apps before full-stack E2E.
+- Background tasks started by Claude Code are killed after their time limit (30 min default): start the E2E backend
+  with a long timeout, and check that port 8080 is free first (a surviving old java process silently serves stale
+  config — this cost an hour of debugging).
 
 ## Technical Debt
 - `MembershipRepository`/`InvitationRepository` join `AppUser` in JPQL (cross-feature read model) — accepted for
@@ -47,24 +54,34 @@ Plan: backend + frontend workers in parallel, then integration E2E, **security r
   before running >1 API instance.
 - Members/invitations UI reads only the first page (50) with "Showing N of M".
 - `SecurityConfig` lives in `shared.security`.
+- Spring Session JDBC writes on every request (lastAccessedTime) + membership query per request: ~3–4 DB round trips
+  per API call. Measure and optimize in Phase 9 (e.g. session flush mode, caching membership briefly — careful: role
+  changes must apply immediately).
+- `S3ObjectStorage` not implemented yet (ADR-0007) — required before Phase 11. No real malware scanner, no orphan
+  object sweeper, no retention policy for superseded/archived files.
+- Storage quota can overshoot by (concurrent uploads × 15 MB) per org (documented).
 
 ## Decisions Pending
 See `docs/DECISIONS.md` § Pending (hosting, pricing/plan limits, sending domain).
+- **Product (owner)**: may the uploader approve their own document? Current behavior: yes (any MEMBER+). Separation
+  of duties is safer for audits but hurts 1–2 person teams. Default kept until the owner decides.
 
 ## Last Session
 Session 1 (2026-10-03): environment inspection; ADR-0002 owner decision; design docs; Phase 0; Phase 1 in batches
-(B1/F1 parallel, B2, security review, SF1 fixes + F2 frontend alignment and full-stack E2E); Phase 1 closed.
+(B1/F1 parallel, B2, security review, SF1 fixes + F2 frontend alignment and full-stack E2E); Phase 1 closed;
+Phase 2 (vendors) closed; Phase 3 (documents) closed after upload security review + fixes and an E2E stability fix
+(standalone build, timeouts, e2e bcrypt cost). Phase 4 contract merged into API.md.
 
 ## Next Session
 See `docs/SESSION_HANDOFF.md`.
 
 ## Verification (last run, 2026-10-03)
-- Backend `./mvnw verify`: **239 tests, 0 failures** (Testcontainers Postgres, incl. real-server trusted-proxy tests, N+1 guard).
-- Frontend: lint ✓, typecheck ✓, **186 unit tests** ✓, build ✓, Playwright smoke 5/5 ✓; `npm audit --omit=dev` 0.
-- Full-stack E2E (`SPRING_PROFILES_ACTIVE=local,e2e` backend + `E2E_FULLSTACK=1`): **14/14** ✓ (incl. vendor lifecycle).
+- Backend `./mvnw verify`: **334 tests, 0 failures** (Testcontainers Postgres; real-server tests for trusted proxy, upload size, header-only CSRF).
+- Frontend: lint ✓, typecheck ✓, **252 unit tests** ✓ (`--maxWorkers=2` when the machine is memory-constrained), build ✓; `npm audit --omit=dev` 0.
+- Full-stack E2E (standalone build + `local,e2e` backend, 2 workers): **15/15** ✓ functionally (vendors spec re-run alone after a total-duration timeout under machine load).
 
 ## Git
-- Branch `main`, no remote. Phase 1 closing commits: `ec0bdd7 security: fix Phase 1 review findings…` + docs commit.
+- Branch `main`, no remote. Phase 3 closing commits: `5f63856 security: fix Phase 3 review findings…`, `3c52019 test(e2e)…` + docs commit.
 
 ## Important Context
 - Machine: Windows 11, Git Bash + PowerShell. JDK 25 only (compile `release=21`, ADR-0009). Maven via `mvnw`.
@@ -78,7 +95,8 @@ See `docs/SESSION_HANDOFF.md`.
 - Testing traps: never use spring-security-test `.with(csrf())` (poisons the shared filter chain); use
   `support/ApiClient` + `TestAccounts`. Tests moving the clock > 7 days must re-login.
 - Full-stack E2E: run backend with `./mvnw spring-boot:run -Dspring-boot.run.profiles=local,e2e`, then
-  `cd frontend && E2E_FULLSTACK=1 npx playwright test`.
+  `cd frontend && E2E_FULLSTACK=1 npx playwright test` (Playwright builds and starts the standalone server itself;
+  run the backend as a background task with a long timeout and make sure port 8080 was free first).
 - Subagents in `.claude/agents/` load only in a new Claude Code session; in session 1 workers were launched as
   `general-purpose` + `model: sonnet` and told to follow those files.
 - Bash tool on this machine fails on large heredocs with quotes — use the Write tool for files.

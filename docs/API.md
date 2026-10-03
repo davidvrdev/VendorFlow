@@ -336,6 +336,48 @@ Rules:
 - `VendorDetail.requirements[i].currentDocument` (null if none) and `otherDocuments` added. `HistoryEvent` gains additive `detail: string | null` ("<type name> - <filename>" for document events). Document events in history: `document.uploaded|superseded|reviewed|dates_changed|archived|downloaded`; `reviewed` -> `changes.reviewStatus`, `archived` -> `changes.state`, `dates_changed` -> `changes.issueDate/expirationDate`.
 - Rate limit rule `document-upload` (30/min/IP) matches `POST /api/v1/vendors/{anything}/documents`.
 
+### Phase 4 contract details — compliance engine (authoritative for backend + frontend)
+
+**Requirement status** (per vendor requirement whose document type is ACTIVE; requirements on inactive types are
+ignored everywhere). Evaluate top to bottom, first match wins. `today` = current date in the organization's time
+zone (`organization.time_zone`); `window` = `organization.expiring_window_days`.
+
+| # | Status | Condition |
+|---|---|---|
+| 1 | `MISSING` | no CURRENT document for (vendor, type), or the CURRENT document is `REJECTED` |
+| 2 | `EXPIRED` | type `hasExpiration` and `expirationDate < today` |
+| 3 | `REVIEW_REQUIRED` | document `reviewStatus = PENDING`, **or** type `hasExpiration` and `expirationDate` is null (type changed after upload) |
+| 4 | `EXPIRING` | type `hasExpiration` and `expirationDate − today ≤ window` (so expiring today = EXPIRING, 0 days left) |
+| 5 | `OK` | otherwise |
+
+Notes: an APPROVED but expired document is EXPIRED (rule 2 before 3). A PENDING expired document is EXPIRED
+(expired is the more urgent action). Types without expiration never become EXPIRED/EXPIRING.
+
+**Vendor compliance**: `NON_COMPLIANT` if any requirement is MISSING or EXPIRED; else `ATTENTION` if any is
+REVIEW_REQUIRED or EXPIRING; else `COMPLIANT`. A vendor with zero (active) requirements is `COMPLIANT` with
+`requirementCount = 0` (UI shows "No requirements set"). INACTIVE vendors still get a computed status but are excluded
+from dashboard counts (Phase 5) and reminders (Phase 6).
+
+**Single source of truth**: `ComplianceCalculator` (pure Java, no Spring) defines the rules. List/dashboard queries
+compute the same in SQL. A shared table of test vectors (`compliance-vectors.csv` in test resources: hasExpiration,
+reviewStatus|none, expirationDate offset, window → expected status) runs against BOTH the Java calculator and the SQL
+(insert fixtures, query, compare). Any divergence fails the build.
+
+```ts
+type RequirementStatus = "MISSING" | "OK" | "EXPIRING" | "EXPIRED" | "REVIEW_REQUIRED";
+type VendorCompliance = "COMPLIANT" | "ATTENTION" | "NON_COMPLIANT";
+type ComplianceSummary = { status: VendorCompliance; missing: number; expired: number; expiring: number;
+  reviewRequired: number; ok: number; nextExpiration: string | null };   // earliest expirationDate among CURRENT,
+                                                                        // non-rejected docs of active requirement types
+// VendorSummary gains: compliance: ComplianceSummary          (requirementCount = active requirements only)
+// VendorDetail gains:  compliance: ComplianceSummary
+// VendorDetail.requirements[i] gains: status: RequirementStatus; daysUntilExpiration: number | null; active: boolean
+```
+List additions: `GET /vendors?compliance=COMPLIANT|ATTENTION|NON_COMPLIANT` (invalid → 400 field `compliance`);
+`sort` adds `compliance` (NON_COMPLIANT → ATTENTION → COMPLIANT, then companyName) and `nextExpiration`
+(nulls last). Still one page query + one count query (N+1 guard test extended).
+Org setting changes (`expiringWindowDays`, `timeZone`) apply immediately (nothing stored).
+
 ### Dashboard (Phase 5)
 - `GET /dashboard/summary` → counts
 - `GET /dashboard/attention?page=&size=` → prioritized action items
