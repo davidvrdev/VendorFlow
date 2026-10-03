@@ -2,6 +2,7 @@ package com.vendorflow.vendor.infrastructure;
 
 import com.vendorflow.compliance.domain.ComplianceSummary;
 import com.vendorflow.compliance.domain.VendorCompliance;
+import com.vendorflow.compliance.infrastructure.RequirementStatusSql;
 import com.vendorflow.vendor.api.VendorSummary;
 import com.vendorflow.vendor.domain.VendorStatus;
 import jakarta.persistence.EntityManager;
@@ -47,33 +48,11 @@ public class VendorSearchRepository {
     private static final char ESCAPE = '!';
 
     /**
-     * Mirrors ComplianceCalculator.evaluate (first match wins; the vectors test keeps both identical):
-     * requirements of ACTIVE types only, joined to the CURRENT document of (vendor, type) if any.
-     * The unique index document_current_uq guarantees at most one CURRENT row, so the join cannot duplicate.
-     * Both joins carry organization_id: tenant isolation holds even if an id were ever wrong.
-     * next_exp: expiration date of a non-rejected CURRENT document of a type that has expiration.
+     * The per-requirement status CTE lives in {@link RequirementStatusSql} (shared with the dashboard).
+     * next_exp: earliest exp_date of the vendor's requirements (non-rejected CURRENT document of an expiring type).
      */
-    private static final String CTES = """
-            with req as (
-              select r.vendor_id,
-                     case
-                       when d.id is null or d.review_status = 'REJECTED' then 'MISSING'
-                       when t.has_expiration and d.expiration_date < cast(:today as date) then 'EXPIRED'
-                       when d.review_status = 'PENDING' or (t.has_expiration and d.expiration_date is null)
-                         then 'REVIEW_REQUIRED'
-                       when t.has_expiration and d.expiration_date - cast(:today as date) <= :windowDays
-                         then 'EXPIRING'
-                       else 'OK'
-                     end as req_status,
-                     case when d.id is not null and d.review_status <> 'REJECTED' and t.has_expiration
-                          then d.expiration_date end as exp_date
-              from vendor_requirement r
-              join document_type t on t.organization_id = r.organization_id and t.id = r.document_type_id
-                                  and t.active
-              left join document d on d.organization_id = r.organization_id and d.vendor_id = r.vendor_id
-                                  and d.document_type_id = r.document_type_id and d.state = 'CURRENT'
-              where r.organization_id = :organizationId
-            ),
+    private static final String CTES = "with " + RequirementStatusSql.REQ_CTE + """
+            ,
             agg as (
               select vendor_id,
                      count(*) as total,

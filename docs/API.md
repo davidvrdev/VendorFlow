@@ -434,6 +434,30 @@ Rules:
 - Performance: both endpoints are one query each (+ count for the page); a test seeds 500 vendors × 6 requirements
   (≈3,000 documents) and asserts bounded statement count and a generous latency budget.
 
+**Implementation notes (Phase 5 backend) — IMPLEMENTED; no differences from the contract above except these details:**
+- The per-requirement CTE lives once in `compliance.infrastructure.RequirementStatusSql.REQ_CTE`; `VendorSearchRepository`
+  and `dashboard.infrastructure.DashboardRepository` both build on it (the status CASE exists nowhere else).
+- `today` in the response = org-time-zone date used for the numbers; `expiringWindowDays` = the window used. Both come from
+  `ComplianceContextService` (statements per request: tenant + org settings + 1 query; the attention page adds 1 count).
+- `GET /dashboard/attention` paging follows the shared convention: `page` (0-based, negative → 0), `size` default **10**,
+  clamped to 1..100 (never 400). Envelope = the usual `{ items, page, size, totalItems, totalPages }`.
+- Vendors with zero (active) requirements count as `compliant` AND `noRequirements`; a vendor whose only requirements are on
+  inactive types is therefore `noRequirements` too. `documents.*` count requirements (one per vendor × active type), not files.
+- `MISSING` item with a REJECTED CURRENT document: `documentId` = that rejected document, `expirationDate` and
+  `daysUntilExpiration` = null. `MISSING` without any document: `documentId` null. `REVIEW_REQUIRED`: `expirationDate` is
+  the document's date when the type has expiration (may be null), `daysUntilExpiration` derived from it (null if no date).
+  `daysUntilExpiration` is negative for EXPIRED, 0 for expiring today.
+- Ordering details: EXPIRED/EXPIRING by `expirationDate` ascending; MISSING by `lower(vendorName)` then type `sortOrder`;
+  REVIEW_REQUIRED by the CURRENT document's `createdAt` (upload time) ascending; then vendor id, then type id (uuid order).
+- Permission: `DATA_VIEW` (every role). Anonymous 401; no active organization 403.
+- Performance evidence (500 vendors, 3,000 requirements, 2,852 CURRENT documents, local Postgres 17): summary 102 ms
+  end-to-end / 3 statements (query execution 29 ms); attention `size=100` 162 ms / 4 statements (13 ms in Postgres). The
+  plans are hash joins over the existing org-scoped indexes (`vendor_requirement_org_type_idx`); at this size the whole
+  org fits in a few hundred shared buffers, so **no new index/migration** was added. Revisit with `EXPLAIN (ANALYZE, BUFFERS)`
+  (the test prints both plans) if an organization grows by 10x or more.
+- Tests: `DashboardTest` (invariants, exclusions, ordering/tie-breaks, paging, permissions, tenant isolation, time zone),
+  `ComplianceDashboardSqlTest` (shared `vectors.csv` parity vs the dashboard), `DashboardPerformanceTest` (500 vendors).
+
 ### CSV (Phase 7)
 - `GET  /vendors/export.csv`
 - `POST /vendors/import/preview` multipart `{ file }` → `{ importId, rows: [...], errors: [...], summary }`
