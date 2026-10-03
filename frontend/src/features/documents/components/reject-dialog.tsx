@@ -14,12 +14,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { applyApiError } from "@/lib/forms/api-errors";
 import { reviewDocument } from "../api";
 import { rejectNoteSchema, type RejectNoteValues } from "../schemas";
-import type { DocumentSummary } from "../types";
+/** Only what the dialog shows, so the dashboard can reject without loading the full document. */
+export interface RejectTarget {
+  id: string;
+  documentType: { name: string };
+  originalFilename?: string;
+}
 
 interface RejectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  document: DocumentSummary;
+  document: RejectTarget;
 }
 
 /** Rejecting requires a note (1-1000 chars) so the uploader knows what to fix. */
@@ -45,7 +50,7 @@ function RejectForm({
   onPendingChange,
   onDone,
 }: {
-  document: DocumentSummary;
+  document: RejectTarget;
   onPendingChange: (pending: boolean) => void;
   onDone: () => void;
 }) {
@@ -89,7 +94,7 @@ function RejectForm({
       <DialogHeader>
         <DialogTitle>Reject document</DialogTitle>
         <DialogDescription>
-          {document.documentType.name} · {document.originalFilename}
+          {document.originalFilename ? `${document.documentType.name} · ${document.originalFilename}` : document.documentType.name}
         </DialogDescription>
       </DialogHeader>
       <FormAlert message={formError} />

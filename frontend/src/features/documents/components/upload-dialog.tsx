@@ -38,7 +38,7 @@ interface UploadDialogProps {
   /** Preselected when opened from a row. */
   initialTypeId?: string;
   /** CURRENT documents by type id, to warn that an upload replaces one. */
-  currentByType: Record<string, DocumentSummary>;
+  currentByType: Record<string, Pick<DocumentSummary, "id">>;
 }
 
 /** Controlled dialog. The form is mounted only while open, so every opening starts clean. */
