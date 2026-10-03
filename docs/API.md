@@ -165,16 +165,57 @@ Rules:
   receivedAt } ]`, oldest first, last 200 messages. Absent (401/404) in every other profile.
 
 ### Vendors (Phase 2)
-- `GET    /vendors?q=&status=&compliance=&category=&page=&size=&sort=` → page of `VendorSummary` (incl. compliance)
+- `GET    /vendors?q=&status=&category=&page=&size=&sort=` → page of `VendorSummary`
+  (`compliance` filter + compliance fields are added in Phase 4)
+- `GET    /vendors/categories` → `string[]` distinct non-empty categories of the org, sorted (for the filter)
 - `POST   /vendors` → 201 `VendorDetail`
-- `GET    /vendors/{id}` → `VendorDetail` (info + requirements with status + current documents)
-- `PATCH  /vendors/{id}`
-- `PUT    /vendors/{id}/requirements` `{ documentTypeIds: [...] }`
-- `GET    /vendors/{id}/history` → audit events for vendor + its documents (paginated)
+- `GET    /vendors/{id}` → `VendorDetail`
+- `PUT    /vendors/{id}` → 200 `VendorDetail` (full replacement of the editable fields)
+- `POST   /vendors/{id}/deactivate` · `POST /vendors/{id}/reactivate` → 200 `VendorDetail`
+- `PUT    /vendors/{id}/requirements` `{ documentTypeIds: [...] }` → 200 `VendorDetail`
+- `GET    /vendors/{id}/history?page=&size=` → page of `HistoryEvent` (vendor events; Phase 3 adds its documents' events)
 - `POST   /vendors/{id}/document-requests` `{ documentTypeId }` → 202 (Phase 6)
 
-### Document types (Phase 3)
-- `GET /document-types` · `POST /document-types` · `PATCH /document-types/{id}`
+### Document types (Phase 2: read · Phase 3: manage)
+- `GET /document-types` → `DocumentType[]` (active types, by `sortOrder`) — Phase 2
+- `POST /document-types` · `PATCH /document-types/{id}` — Phase 3
+
+### Phase 2 contract details (authoritative for backend + frontend)
+```ts
+type VendorStatus = "ACTIVE" | "INACTIVE";
+type DocumentType = { id: string; code: string; name: string; hasExpiration: boolean; requiredByDefault: boolean;
+  sortOrder: number };
+type VendorSummary = { id: string; companyName: string; contactName: string | null; email: string | null;
+  phone: string | null; category: string | null; status: VendorStatus; requirementCount: number;
+  createdAt: string; updatedAt: string };
+type VendorDetail = VendorSummary & { notes: string | null; createdBy: { fullName: string } | null;
+  requirements: { documentTypeId: string; code: string; name: string; hasExpiration: boolean }[] };  // by sortOrder
+type VendorInput = { companyName: string; contactName?: string | null; email?: string | null; phone?: string | null;
+  category?: string | null; notes?: string | null };              // body of POST /vendors and PUT /vendors/{id}
+type HistoryEvent = { id: string; action: string; actor: { fullName: string } | null; occurredAt: string;
+  changes: Record<string, { before: unknown; after: unknown }> | null };
+```
+Rules:
+- Permissions (SECURITY.md §3): list/detail/history/categories/document-types → `VENDORS_VIEW` (all roles);
+  create + edit → `VENDORS_WRITE` (OWNER/ADMIN/MEMBER); deactivate/reactivate → `ARCHIVE_AND_IMPORT` (OWNER/ADMIN);
+  requirements → `REQUIREMENTS_MANAGE` (OWNER/ADMIN).
+- Validation (strings trimmed; empty string → null for optional fields; control/bidi characters rejected):
+  `companyName` 1–200; `contactName` ≤120; `email` valid ≤254; `phone` ≤40 chars of `[0-9+().\- x]` and "ext";
+  `category` ≤60; `notes` ≤5000. Unknown JSON fields are ignored (never bound to the entity).
+- `companyName` is unique per organization, case-insensitive (after trim) → **409** `title: "Vendor already exists"`.
+- `POST /vendors` attaches the org's active document types with `requiredByDefault=true` as requirements.
+- `PUT /vendors/{id}/requirements`: every id must be an **active document type of the active org**, otherwise **400**
+  field error on `documentTypeIds` (same response for foreign and nonexistent ids). Duplicates ignored. Empty list allowed.
+- Deactivating an INACTIVE vendor (or reactivating an ACTIVE one) is a no-op 200.
+- List: `q` matches company name, contact name or email (case-insensitive substring; `%`/`_` escaped);
+  `status` = `ACTIVE` (default) | `INACTIVE` | `ALL`; `category` exact (case-insensitive);
+  `sort` ∈ `companyName` (default), `createdAt`, `updatedAt`, each `,asc|,desc`; anything else → 400.
+  `size` default 25, max 100.
+- Foreign or nonexistent vendor id → **404** on every `/vendors/{id}…` endpoint.
+- Audit actions: `vendor.created`, `vendor.updated` (before/after of changed fields), `vendor.deactivated`,
+  `vendor.reactivated`, `vendor.requirements_changed` (`added`/`removed` type codes).
+- New organizations get the 8 default document types (DATABASE.md § document_type); existing orgs are backfilled by
+  the Phase 2 migration.
 
 ### Documents (Phase 3)
 - `POST  /vendors/{vendorId}/documents` multipart `{ file, documentTypeId, issueDate?, expirationDate? }` → 201

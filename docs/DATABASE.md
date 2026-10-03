@@ -92,6 +92,12 @@ Indexes: `UNIQUE (organization_id, id)`, `UNIQUE (organization_id, lower(company
   PROFESSIONAL_LICENSE, W9, CONTRACT, OTHER) so each org can rename/deactivate/add types.
 - `UNIQUE (organization_id, code)`, `UNIQUE (organization_id, id)`.
 - W-9 and Contract default `has_expiration=false`.
+- Default seed (created in Phase 2; `code` · name · has_expiration · required_by_default · sort_order):
+  `COI` · Certificate of Insurance · ✓ · ✓ · 10 — `GENERAL_LIABILITY` · General Liability · ✓ · ✗ · 20 —
+  `WORKERS_COMP` · Workers' Compensation · ✓ · ✓ · 30 — `BUSINESS_LICENSE` · Business License · ✓ · ✗ · 40 —
+  `PROFESSIONAL_LICENSE` · Professional License · ✓ · ✗ · 50 — `W9` · W-9 · ✗ · ✓ · 60 —
+  `CONTRACT` · Contract · ✗ · ✗ · 70 — `OTHER` · Other · ✗ · ✗ · 80.
+  Rationale: COI, workers' comp and W-9 are what property/HOA managers ask every vendor for; the rest vary by trade.
 
 ### vendor_requirement
 `id, organization_id, vendor_id, document_type_id, created_at`

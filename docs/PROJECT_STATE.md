@@ -63,6 +63,9 @@ See `docs/SESSION_HANDOFF.md`.
 - Machine: Windows 11, Git Bash + PowerShell. JDK 25 only (compile `release=21`, ADR-0009). Maven via `mvnw`.
   Node 24 / npm 11. Docker Desktop 29 (start it before tests). No `psql`, `supabase` CLI, `gh`.
 - Owner decision: own auth with Spring Security + server-side sessions (ADR-0002), not Supabase Auth.
+- **Owner instruction (2026-10-03): chain all MVP phases through Phase 10 without asking between phases**, as long
+  as each phase passes its quality gates. Stop only for blocking gate failures, business decisions (pricing, plan
+  limits) or owner-only inputs (Stripe test keys, Resend key + domain, GitHub remote). Phase 11+ needs the owner.
 - Tokens (verify/reset/invite) travel only in URL fragments (`#token=`) and are POSTed by the page.
 - Email outbox moved into Phase 1 (needed by verification/invite emails).
 - Subagents in `.claude/agents/` load only in a new Claude Code session; in session 1 workers were launched as
