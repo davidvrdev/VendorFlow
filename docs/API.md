@@ -532,9 +532,55 @@ appear. Never expose payloads or tokens.
 - **E2E only**: `POST /api/test/reminders/run` (profile `e2e`, loopback only, logged in, OWNER/ADMIN, CSRF header) runs the job now for the active org ignoring the 07:00/once-per-day gates → `{ ran, newLedgerRows, digestsEnqueued }`. Absent (404) in every other profile. The e2e mailbox message JSON is now
   `{ kind, to, subject, text, replyTo, links, receivedAt }` (`text` = plain-text body, `replyTo` nullable); `links` are still the URLs found in the text body (digest: `<APP_BASE_URL>/dashboard`). The e2e profile sets `app.reminders.enabled=false`.
 ### CSV (Phase 7)
-- `GET  /vendors/export.csv`
-- `POST /vendors/import/preview` multipart `{ file }` → `{ importId, rows: [...], errors: [...], summary }`
-- `POST /vendors/import/{importId}/commit` → applies (only if preview had no errors)
+- `GET  /vendors/export.csv?status=&compliance=&q=&category=` → `text/csv` download
+- `GET  /vendors/import/template.csv` → header row + one example row
+- `POST /vendors/import/preview` multipart `{ file }` → 200 `ImportPreview`
+- `POST /vendors/import/{importId}/commit` → 200 `ImportResult`
+
+### Phase 7 contract details — CSV (authoritative for backend + frontend)
+**Library**: Apache Commons CSV (Apache-2.0, maintained) for RFC 4180 parsing/printing — quoted fields, embedded
+commas/newlines and BOM are where hand-rolled parsers break. Log it in DECISIONS.md.
+
+**Columns** (header names case-insensitive, trimmed; order free; unknown columns → preview error on row 1):
+`company_name` (required), `contact_name`, `email`, `phone`, `category`, `notes`, `status` (`ACTIVE|INACTIVE`,
+case-insensitive). Export adds read-only compliance columns: `compliance_status`, `missing`, `expired`, `expiring`,
+`review_required`, `next_expiration` (ignored on import if present, so an export can be re-imported).
+
+**Export** (`VENDORS_VIEW`, all roles): same filters as `GET /vendors` (default status=ACTIVE; `ALL` allowed), sorted
+by company name, cap 10,000 rows (more → 422 asking to filter). UTF-8 **with BOM** (Excel), CRLF line endings,
+`Content-Disposition: attachment; filename="vendors-YYYY-MM-DD.csv"`, `Cache-Control: no-store`. **CSV/formula
+injection**: any cell whose first character is `=`, `+`, `-`, `@`, TAB or CR is prefixed with `'`. Audit
+`vendor.exported` (filters + row count, no data). One query (reuse the vendor list SQL; no N+1).
+
+**Import preview** (`ARCHIVE_AND_IMPORT` = OWNER/ADMIN): multipart `file`, ≤ 1 MB (413), extension `.csv` and content
+must decode as UTF-8 (BOM optional) else 415/400; ≤ 2,000 data rows (else 422). Every row is validated with the SAME
+rules as the vendor API (lengths, email, phone, `@PlainText`, notes may contain line breaks). Duplicate
+`company_name` within the file (case-insensitive, trimmed) → error on every duplicate row. Matching by
+`company_name` (case-insensitive) against the org's vendors decides the action:
+- `CREATE` — no existing vendor; empty cells → null; default requirements attached (same as `POST /vendors`).
+- `UPDATE` — existing vendor and at least one non-empty cell differs; **empty cells leave the existing value
+  unchanged** (an import never erases data); `status` applied only when present.
+- `UNCHANGED` — existing vendor, nothing differs.
+- `ERROR` — any validation problem; `errors: [{ field, message }]` (field = column name).
+The preview is stored server-side (`vendor_import` table: id, organization_id, created_by_user_id, status
+`PREVIEWED|COMMITTED|EXPIRED`, parsed rows jsonb, summary, created_at, expires_at = +1 h). Nothing touches vendors.
+```ts
+type ImportRowAction = "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
+type ImportPreview = { importId: string; expiresAt: string;
+  summary: { total: number; create: number; update: number; unchanged: number; error: number };
+  rows: { rowNumber: number;            // 1-based data row (header excluded), as the user sees it in a spreadsheet
+          companyName: string | null; action: ImportRowAction;
+          changes: string[];            // UPDATE: names of fields that will change
+          errors: { field: string; message: string }[] }[] };
+type ImportResult = { created: number; updated: number; unchanged: number };
+```
+**Commit** (`ARCHIVE_AND_IMPORT`): import must belong to the active org (else 404), be `PREVIEWED`, not expired
+(410 `title: "Import expired"`), and have zero ERROR rows (422). Already committed → 409. In ONE transaction:
+re-check every row against the CURRENT database (a vendor created/renamed since the preview changes the outcome →
+409 `title: "Data changed since preview"`, nothing applied — the user previews again), apply creates/updates, mark
+`COMMITTED`. Audit one `vendor.created`/`vendor.updated` per affected vendor (metadata `source: "csv_import"`,
+`importId`) plus one `vendor.imported` summary event. Rate limit: preview 10/min per user.
+Expired previews are deleted by a periodic cleanup (keep it simple: during preview creation or a scheduled job).
 
 ### Billing (Phase 8)
 - `GET  /billing/subscription`

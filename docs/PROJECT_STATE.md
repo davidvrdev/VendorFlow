@@ -10,11 +10,9 @@ vendor documents, see derived compliance, work from a prioritized dashboard, req
 email and receive a daily digest (real email delivery pending the owner's Resend key + domain).
 
 ## Current Sprint
-None — paused after Phase 6 by the owner. Next when resumed: **Phase 7 — CSV import/export** (contract not written
-yet). Planned design: export `GET /vendors/export.csv` (UTF-8 BOM, CSV-injection-safe cells, compliance columns);
-import = upload → server-side preview (per-row CREATE/UPDATE/UNCHANGED/ERROR, stored import job with 1 h expiry) →
-atomic commit with re-validation; OWNER/ADMIN; ≤1 MB / ≤2,000 rows; parser = Apache Commons CSV (decision to log in
-DECISIONS.md when implemented). Ask the owner before resuming.
+Phase 7 — CSV import/export (owner authorized Phase 7 only on 2026-10-04: **stop after it closes**).
+Contract: `docs/API.md` § "Phase 7 contract details" (authoritative). Backend + frontend workers in parallel, then
+integration E2E, security review (file parsing, CSV injection, tenant isolation), close.
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
