@@ -21,7 +21,7 @@ Do not start future phases early. Status: ☐ not started · ◐ in progress · 
 | 12 | Beta | ☐ | 3–5 design partners onboarded; feedback loop |
 | 13 | AI extraction | ☐ | Structured extraction with confidence + human review + provenance |
 | 14 | Vendor portal | ☑ | Tokenized upload links, no vendor account |
-| 15 | Automated chasing | ☐ | Scheduled vendor follow-ups |
+| 15 | Automated chasing | ◐ | Paused by owner: backend done; security fixes + frontend WIP on branch `wip/phase-15-chasing` |
 | 16 | Integrations | ☐ | PMS / accounting / CRM connectors |
 
 ## Phase 0 — Foundation task list (done 2026-10-03; CI workflow written, not yet run: no git remote)

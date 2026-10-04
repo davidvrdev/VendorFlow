@@ -1,17 +1,30 @@
 # PROJECT_STATE — VendorFlow
 
-_Last updated: 2026-10-04 (session 2)_
+_Last updated: 2026-10-04 (session 3)_
 
 ## Current Status
-Phases 0–10 ☑ **done** (… CSV, Billing, Security hardening, E2E/QA) = **MVP complete**. Owner authorized all remaining phases on 2026-10-04 (session 3); work
-continues phase by phase, stopping only on owner-only blockers.
+Phases 0–10 ☑ done = **MVP complete**; Phase 14 (vendor portal) ☑; Phase 11 (deploy) ◐ prepared, blocked on owner
+accounts; **Phase 15 (automated chasing) ◐ paused mid-way by the owner (2026-10-04)** — work-in-progress lives on
+branch `wip/phase-15-chasing` (NOT merged, NOT verified). Do not resume any phase without an explicit owner go.
 Users can manage organizations/members, vendors, required document types, upload/review/archive/download vendor
 documents, see derived compliance, work from a prioritized dashboard, request documents from vendors by email, receive
 a daily digest (real delivery pending the owner's Resend key + domain), and export/import vendors as CSV.
 
 ## Current Sprint
-None — paused after Phase 7. Next when the owner resumes: **Phase 8 — Billing (Stripe)**. Needs owner input first:
-Stripe test-mode keys, pricing and plan limits (DECISIONS.md § Pending).
+Paused by the owner during Phase 15. See "Phase 15 status" below and SESSION_HANDOFF.md.
+
+## Phase 15 status (branch `wip/phase-15-chasing`)
+- **Done and verified** (before the security fixes started): backend chasing feature + contract (ADR-0012, V12,
+  `com.vendorflow.chasing`: org settings, per-vendor pause, hourly scheduler with idempotent ledger, one email per
+  recipient per day, portal link per chase, opt-out endpoint, activity list). `./mvnw verify` was green at that point.
+- **Security review** (no critical/high) found M1 org-row lock blocks tenant writes; M2 one bad vendor blocks the org;
+  M3 no global suppression / volume caps; M4 CAN-SPAM postal address, List-Unsubscribe one-click, replyTo; L1–L4.
+- **Interrupted, unverified (session ended mid-task)**: fixes for M1–M4/L1–L4 (DeliveryGuard,
+  EmailSuppressionService, SensitivePaths, edits in chasing/notification) and the frontend (settings/chasing page,
+  vendor follow-up card + history, public /portal/unsubscribe page, e2e ChasingRunController + chasing.spec.ts).
+  Nothing of this has been compiled/tested as a whole. Next session: check out the branch, run backend verify +
+  frontend checks + full-stack E2E (fresh DB `vendorflow_e2e`), finish what is missing, security re-review, merge.
+- **Owner input needed**: a postal address for the CAN-SPAM email footer (chasing must not send in prod without it).
 
 ## Completed
 - Discovery & design: docs, ADR-0001…0009, data model, API contract, threat model, privacy inventory.
