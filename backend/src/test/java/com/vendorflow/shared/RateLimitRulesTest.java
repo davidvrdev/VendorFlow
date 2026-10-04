@@ -48,6 +48,7 @@ class RateLimitRulesTest extends IntegrationTest {
             Map.entry("portal-link", "PortalRateLimitTest.linkBudgetIsPerLinkNotPerIp"),
             Map.entry("portal-link-upload", "PortalRateLimitTest.uploadAttemptsAreLimitedPerLinkAndFailedAttemptsCount"),
             Map.entry("portal-link-create-user", "PortalRateLimitTest.linkCreationIsLimitedPerUser"),
+            Map.entry("chasing-opt-out", "ChasingOptOutRateLimitTest.optOutIsLimitedPerIp"),
             Map.entry("stripe-webhook", "RateLimitRulesTest.stripeWebhook")));
 
     @Autowired MockMvc mvc;

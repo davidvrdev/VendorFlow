@@ -49,16 +49,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
             // DB lookup an anonymous caller should not be able to repeat without bound.
             "/api/v1/auth/verify-email", "token-redemption",
             "/api/v1/auth/password-reset/confirm", "token-redemption",
-            "/api/v1/webhooks/stripe", "stripe-webhook");
+            "/api/v1/webhooks/stripe", "stripe-webhook",
+            // Public vendor unsubscribe (ADR-0012): token lookup an anonymous caller must not be able to repeat without bound.
+            "/api/v1/portal/chasing/opt-out", "chasing-opt-out");
 
     /** POST paths with a variable segment (normalized, lower case): pattern -> rule name. */
     private static final Map<Pattern, String> PATTERN_RULES = Map.of(
             Pattern.compile("/api/v1/vendors/[^/]+/documents"), "document-upload",
-            Pattern.compile("/api/v1/portal/link/documents"), "portal-upload");
+            Pattern.compile("/api/v1/portal/link/documents"), "portal-upload",
+            // RFC 8058 one-click unsubscribe (token in the path): shares the opt-out budget (ADR-0012).
+            Pattern.compile("/api/v1/portal/chasing/one-click/[^/]+"), "chasing-opt-out");
 
     /** GET/HEAD paths with a variable segment: the public portal view (HEAD is routed to the GET handler). */
     private static final Map<Pattern, String> READ_PATTERN_RULES = Map.of(
-            Pattern.compile("/api/v1/portal/link"), "portal-view");
+            Pattern.compile("/api/v1/portal/link"), "portal-view",
+            Pattern.compile("/api/v1/portal/chasing/opt-out"), "chasing-opt-out");
 
     private final RateLimiter limiter;
     private final ProblemJsonWriter writer;

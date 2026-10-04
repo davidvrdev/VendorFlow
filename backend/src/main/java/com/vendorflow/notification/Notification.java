@@ -28,7 +28,7 @@ public class Notification extends UuidEntity {
             Duration.ofHours(2), Duration.ofHours(6)};
     static final int MAX_ATTEMPTS = 6;
     /** Payload keys holding secrets; removed once the notification reaches a terminal state. */
-    private static final Set<String> SECRET_KEYS = Set.of("token");
+    private static final Set<String> SECRET_KEYS = Set.of("token", "optOutToken");
 
     @Column(name = "organization_id", updatable = false)
     private UUID organizationId;

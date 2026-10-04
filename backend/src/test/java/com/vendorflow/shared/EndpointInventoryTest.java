@@ -44,7 +44,12 @@ class EndpointInventoryTest extends IntegrationTest {
             "POST /api/v1/webhooks/stripe",
             // Vendor portal (ADR-0011): the token in the X-Portal-Token header is the credential; PortalApiTest covers behavior.
             "GET /api/v1/portal/link",
-            "POST /api/v1/portal/link/documents");
+            "POST /api/v1/portal/link/documents",
+            // Vendor unsubscribe (ADR-0012): header token is the credential; GET never changes state.
+            "GET /api/v1/portal/chasing/opt-out",
+            "POST /api/v1/portal/chasing/opt-out",
+            // RFC 8058 one-click (List-Unsubscribe header): token in the path, POST only (GET answers 405).
+            "POST /api/v1/portal/chasing/one-click/{token}");
 
     /**
      * Mutating endpoints exempt from CSRF: the Stripe webhook has no browser session and is authenticated by its
@@ -53,7 +58,8 @@ class EndpointInventoryTest extends IntegrationTest {
      * ambient credential for a cross-site request to ride on (PortalApiTest proves it ignores a session cookie).
      */
     private static final Set<String> CSRF_EXEMPT = Set.of("POST /api/v1/webhooks/stripe",
-            "POST /api/v1/portal/link/documents");
+            "POST /api/v1/portal/link/documents", "POST /api/v1/portal/chasing/opt-out",
+            "POST /api/v1/portal/chasing/one-click/{token}");
 
     private static final Set<RequestMethod> SAFE = Set.of(RequestMethod.GET, RequestMethod.HEAD,
             RequestMethod.OPTIONS, RequestMethod.TRACE);

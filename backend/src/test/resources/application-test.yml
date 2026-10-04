@@ -11,6 +11,9 @@ app:
     argon2-iterations: 1
   documents:
     org-quota: 40MB
+  chasing:
+    # Tests call ChasingService directly with the MutableClock.
+    enabled: false
   reminders:
     # Tests call ReminderService directly with the MutableClock.
     enabled: false
@@ -18,6 +21,9 @@ app:
     dispatcher:
       # Tests call OutboxDispatcher.dispatchBatch() directly.
       enabled: false
+vendorflow:
+  mail:
+    postal-address: "VendorFlow Test, 1 Test Street, Springfield, USA"
 spring:
   jpa:
     properties:

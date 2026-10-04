@@ -1,6 +1,7 @@
 package com.vendorflow.shared.error;
 
 import com.vendorflow.shared.web.RequestIdFilter;
+import com.vendorflow.shared.web.SensitivePaths;
 import jakarta.validation.ConstraintViolationException;
 import java.util.ArrayList;
 import java.util.List;
@@ -136,6 +137,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (body instanceof ProblemDetail pd
                 && (pd.getProperties() == null || !pd.getProperties().containsKey(RequestIdFilter.MDC_KEY))) {
             pd.setProperty(RequestIdFilter.MDC_KEY, MDC.get(RequestIdFilter.MDC_KEY));
+        }
+        if (body instanceof ProblemDetail pd && pd.getInstance() == null
+                && request instanceof org.springframework.web.context.request.ServletWebRequest swr) {
+            // Spring would fill "instance" with the request path; a secret path segment must not be echoed.
+            String path = swr.getRequest().getRequestURI();
+            if (!java.util.Objects.equals(path, SensitivePaths.mask(path))) {
+                pd.setInstance(java.net.URI.create(SensitivePaths.mask(path).replace("{", "%7B").replace("}", "%7D")));
+            }
         }
         return super.handleExceptionInternal(ex, body, headers, statusCode, request);
     }

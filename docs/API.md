@@ -670,7 +670,7 @@ Vendors upload through a link; no vendor account. Staff create and revoke links;
 **Staff endpoints** (session + CSRF as usual; tenant from the session; a vendor/link of another organization is 404):
 - `POST /vendors/{vendorId}/upload-links` — `CONTENT_WRITE` (MEMBER+; VIEWER 403). Body
   `{ documentTypeIds: uuid[1..20], expiresInDays?: 1..30 (default 14), maxUploads?: 1..50 (default 20), maxTotalMb?: 1..500 (default 100; total bytes the link may upload), sendEmail?: boolean (default false) }` → **201**
-  `{ link: UploadLink, url: string, emailQueued: boolean }`. `url` = `{APP_BASE_URL}/portal#token=<raw token>` and is the ONLY time the raw token is ever returned
+  `{ link: UploadLink, url: string, emailQueued: boolean, emailSkippedReason: "ADDRESS_UNSUBSCRIBED"|null }`. `url` = `{APP_BASE_URL}/portal#token=<raw token>` and is the ONLY time the raw token is ever returned
   (response is `no-store`; it is not stored, audited or logged; lost link = create a new one). Rules: every id must be an ACTIVE document type that is a requirement of this vendor, else 400
   `errors[].field = documentTypeIds`; vendor must be ACTIVE (422 `vendor-inactive`); `sendEmail=true` needs a vendor email (422 `vendor-no-email`) and queues the existing `DOCUMENT_REQUEST` email with the portal link
   (idempotency key `portallink:{linkId}`). Rate limit `portal-link-create-user` 30/min per user. Audit `portal_link.created` (entity `vendor_upload_link`; metadata vendorId, documentTypeIds, expiresAt, maxUploads, emailed; never the token).
@@ -706,3 +706,54 @@ type UploadLink = { id: string; vendorId: string; documentTypes: { id: string; n
 - Staff e-mail: each upload enqueues `PORTAL_UPLOAD` to every verified OWNER/ADMIN, at most one per recipient per link per UTC day.
 - `DocumentSummary` (staff API) gains `source: "STAFF" | "PORTAL"`; `uploadedBy` is `null` for portal uploads.
 - Frontend (later task): public page `/portal` reads `location.hash` (`#token=...`), clears it with `history.replaceState`, calls the endpoints above; the vendor detail page gets "Send upload link" + link list.
+
+### Automated chasing (Phase 15) **(backend implemented)** — ADR-0012
+
+Org settings (organization-scoped, from `TenantContext`; no org id in the URL):
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| GET | `/api/v1/organization/chasing` | `DATA_VIEW` (any role) | defaults when never saved |
+| PUT | `/api/v1/organization/chasing` | `ORG_SETTINGS_MANAGE` (OWNER/ADMIN) | full replace; 402 in read-only orgs |
+
+`ChasingSettings` = `{ enabled: bool (default false), cadenceDays: int 3..30 (7), maxAttempts: int 1..10 (4), leadDays: int 7..90 (30), sendHourLocal: int 0..23 (9, org time zone), ccStaff: bool (false) }`.
+PUT requires ALL fields (400 `validation-error` with field violations otherwise). Audit `chasing.settings.updated` with before/after of the changed fields (only when something changed).
+
+Per vendor (the vendor must belong to the caller's org, else 404):
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/api/v1/vendors/{id}/chasing` | `DATA_VIEW` |
+| PUT | `/api/v1/vendors/{id}/chasing` body `{ "paused": bool }` | `CONTENT_WRITE` (MEMBER+) |
+| GET | `/api/v1/vendors/{id}/chases?page&size` | `DATA_VIEW` |
+
+`VendorChasingState` = `{ paused: bool, pausedReason: "MANUAL"|"OPT_OUT"|null, lastChasedAt: instant|null, attempts: int, maxAttempts: int, nextChaseAt: instant|null, status: "IDLE"|"ACTIVE"|"EXHAUSTED"|"PAUSED"|"NO_EMAIL" }`.
+Status precedence: PAUSED, NO_EMAIL, then IDLE unless (vendor ACTIVE, org chasing enabled, >= 1 deficient requirement), then EXHAUSTED when `attempts >= maxAttempts`, else ACTIVE.
+`attempts` is the current episode's count (0 when nothing is deficient). `nextChaseAt` is non-null only for ACTIVE: `max(now, max(today, lastChasedLocalDate + cadenceDays) at sendHourLocal in the org zone)`.
+PUT returns the new state. `paused:false` on a vendor with `pausedReason = OPT_OUT` -> 422 `vendor-opted-out`. Audit `vendor.chasing.paused` / `vendor.chasing.resumed` (only on a real change; repeating is a 200 no-op).
+Deviation from the first draft: the state is NOT embedded in `VendorDetail` (it would create a vendor -> chasing -> portal -> vendor package cycle); the frontend calls `GET /vendors/{id}/chasing`.
+
+`GET /vendors/{id}/chases` -> `PageResponse<Chase>`, newest first (max size 100): `Chase` = `{ id, date: "yyyy-MM-dd" (org-local), attempt: int, types: [{ id, name, status: MISSING|EXPIRED|EXPIRING }], createdAt, linkStatus: ACTIVE|EXHAUSTED|EXPIRED|REVOKED|null, emailStatus: PENDING|SENT|FAILED|DEAD|null }`.
+Never contains a token, link URL or recipient address.
+
+Public opt-out (no session, no cookies read; the token is in header `X-Portal-Token`, like the portal; per-IP rate rule `chasing-opt-out` 20/min; CSRF-exempt for POST only because no ambient credential is used):
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/api/v1/portal/chasing/opt-out` | NEVER changes state. 200 `{ organizationName, vendorName, optedOut: bool }` |
+| POST | `/api/v1/portal/chasing/opt-out` (no body) | Pauses chasing for the vendor (`pausedReason = OPT_OUT`), notifies staff once, audits `vendor.chasing.opted_out`. 200 `{ organizationName, vendorName, optedOut: true }`; a repeat is the same 200 with no second audit row or notice |
+
+RFC 8058 one-click target of the `List-Unsubscribe` header (token in the PATH, because a header can only carry a URL; same rate rule, same identical 404, `no-store`):
+
+| Method | Path | Behavior |
+|---|---|---|
+| POST | `/api/v1/portal/chasing/one-click/{token}` (body `List-Unsubscribe=One-Click` ignored) | Same effect and response as the header-token POST (opt-out, global suppression, queued chase cancelled, staff notified once). CSRF-exempt: exact POST pattern, no cookie or session read |
+| GET (and every other method) | same path | **405**, never changes state (link scanners/prefetch) |
+
+The problem `instance` of 404/405/429 on this path shows `/api/v1/portal/chasing/one-click/{token}` (masked). A reverse proxy may log the path: see docs/SECURITY.md (proxy caveat).
+
+Bad, unknown, malformed or expired (180 days) token: identical 404 `https://vendorflow.app/problems/chasing-opt-out-invalid`. Responses are `no-store`, `no-referrer`. The email links to `{app.base-url}/portal/unsubscribe#token=...` (frontend page, to be built).
+
+Hardening (security review): chasing can only be switched ON by a verified OWNER/ADMIN (PUT `/organization/chasing` with `enabled:true` -> 422 `email-not-verified` for an unverified user). Pausing a vendor or an opt-out cancels that vendor's queued `VENDOR_CHASE` emails (DEAD, tokens scrubbed). An opted-out address is globally suppressed: manual `POST /vendors/{id}/document-requests` -> 422 `address-unsubscribed`; `POST /vendors/{id}/upload-links` with `sendEmail:true` -> 201 with `emailQueued:false` and `emailSkippedReason:"ADDRESS_UNSUBSCRIBED"` (the link exists; `emailSkippedReason` is null otherwise). Limits: 200 chases per organization per local day (`app.chasing.max-per-org-per-day`), 1 chase per address per 24 h across organizations. No chase is sent while `vendorflow.mail.postal-address` is blank.
+
+Emails (all through the outbox; tokens scrubbed after SENT/DEAD): `VENDOR_CHASE` to the vendor (types with status/date, "reminder n of max", upload link `{base}/portal#token=...`, opt-out link) with footer "sent by VendorFlow on behalf of <org>" + postal address, Reply-To = first verified OWNER/ADMIN, headers `List-Unsubscribe` / `List-Unsubscribe-Post` and `CHASING_STAFF_NOTICE` to verified OWNER/ADMIN (`SUMMARY` when ccStaff, `EXHAUSTED`, `OPTED_OUT`). Both appear in `GET /notifications` activity.

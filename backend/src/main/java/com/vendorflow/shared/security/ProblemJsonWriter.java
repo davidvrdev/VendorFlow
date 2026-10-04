@@ -29,7 +29,7 @@ public class ProblemJsonWriter {
         body.put("title", pd.getTitle());
         body.put("status", pd.getStatus());
         body.put("detail", pd.getDetail());
-        body.put("instance", instance);
+        body.put("instance", com.vendorflow.shared.web.SensitivePaths.mask(instance));
         if (pd.getProperties() != null) {
             body.putAll(pd.getProperties());
         }

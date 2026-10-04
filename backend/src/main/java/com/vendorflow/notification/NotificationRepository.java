@@ -52,9 +52,9 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
             UPDATE notification
-            SET status = 'DEAD', payload = payload - 'token', updated_at = :now,
+            SET status = 'DEAD', payload = payload - 'token' - 'optOutToken', updated_at = :now,
                 last_error = 'Token expired before delivery'
-            WHERE status IN ('PENDING', 'FAILED') AND payload -> 'token' IS NOT NULL
+            WHERE status IN ('PENDING', 'FAILED') AND (payload -> 'token' IS NOT NULL OR payload -> 'optOutToken' IS NOT NULL)
               AND ((kind = 'INVITATION' AND created_at < :invitationCutoff)
                    OR (kind <> 'INVITATION' AND created_at < :accountCutoff))
             """, nativeQuery = true)

@@ -6,6 +6,8 @@ import { VendorComplianceBadge } from "@/components/vendor-compliance-badge";
 import { PageHeader } from "@/components/page-header";
 import { DocumentHistory } from "@/features/documents/components/document-history";
 import { OtherDocumentsCard } from "@/features/documents/components/other-documents-card";
+import { VendorChasingCard } from "@/features/chasing/components/vendor-chasing-card";
+import { fetchChasingSettingsOrNull } from "@/features/chasing/server";
 import { UploadLinksCard } from "@/features/portal/components/upload-links-card";
 import { HistoryCard } from "@/features/vendors/components/history-card";
 import { currentDocumentsByType, RequirementsCard } from "@/features/vendors/components/requirements-card";
@@ -29,12 +31,13 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
   const me = await requireMe();
   const role = me.activeOrganization?.role ?? "VIEWER";
 
-  const [vendor, history, documentTypes] = await Promise.all([
+  const [vendor, history, documentTypes, chasingSettings] = await Promise.all([
     fetchVendorOrNotFound(id),
     fetchVendorHistory(id, historyPage).catch((error: unknown) => {
       throw asNotFound(error);
     }),
     fetchDocumentTypes(),
+    fetchChasingSettingsOrNull(),
   ]);
 
   if (history.items.length === 0 && history.totalItems > 0 && historyPage > 1) {
@@ -75,6 +78,7 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
             .filter((requirement) => requirement.active && documentTypes.some((type) => type.id === requirement.documentTypeId))
             .map((requirement) => ({ documentTypeId: requirement.documentTypeId, name: requirement.name, status: requirement.status }))}
         />
+        <VendorChasingCard vendorId={vendor.id} role={role} organizationEnabled={chasingSettings ? chasingSettings.enabled : null} />
         <DocumentHistory vendorId={vendor.id} version={documentsVersion} />
         <HistoryCard
           events={history.items}

@@ -114,6 +114,8 @@ app:
       # upload ATTEMPTS per link (successful or not), counted after the token is validated
       portal-link-upload: 10
       portal-link-create-user: 30
+      # Public vendor unsubscribe (ADR-0012): GET + POST /api/v1/portal/chasing/opt-out, shared per-IP budget
+      chasing-opt-out: 20
   documents:
     # Max size of one uploaded document (our own check, before the multipart limits above).
     max-size: 15MB
@@ -145,8 +147,20 @@ app:
     # Scheduled expiry-reminder + digest job (every 15 min; per org once per org-local day after 07:00).
     enabled: true
     fixed-delay-ms: 900000
+  chasing:
+    # Automated vendor chasing (ADR-0012): hourly tick at minute 5; per org once per local day at/after its send hour.
+    # Nothing is sent unless the organization turned chasing on (chasing_settings.enabled, default false).
+    enabled: true
+    cron: "0 5 * * * *"
+    # Hard limits (ADR-0012): chases per organization per local day, vendors per transaction.
+    max-per-org-per-day: 200
+    batch-size: 50
 
 vendorflow:
+  mail:
+    # CAN-SPAM: the sender's physical postal address, printed in the footer of automated vendor emails. REQUIRED for
+    # automated chasing: while blank, no chase is sent (the run logs one WARN and reports blocked=postal-address-missing).
+    postal-address: ${VENDORFLOW_MAIL_POSTAL_ADDRESS:}
   storage:
     # noop | clamav. Prod refuses noop unless allow-noop-scanner-in-prod=true (ProfileGuard).
     scanner: ${STORAGE_SCANNER:noop}

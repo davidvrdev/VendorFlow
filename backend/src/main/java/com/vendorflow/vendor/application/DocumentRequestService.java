@@ -5,6 +5,7 @@ import com.vendorflow.compliance.application.ComplianceContextService;
 import com.vendorflow.document.api.DocumentTypeView;
 import com.vendorflow.document.application.DocumentTypeService;
 import com.vendorflow.identity.application.UserAccountService;
+import com.vendorflow.notification.EmailSuppressionService;
 import com.vendorflow.notification.NotificationKind;
 import com.vendorflow.notification.OutboxService;
 import com.vendorflow.organization.application.AuthorizationService;
@@ -52,13 +53,14 @@ public class DocumentRequestService {
     private final AuthorizationService authorization;
     private final AuditService audit;
     private final RateLimiter rateLimiter;
+    private final EmailSuppressionService suppression;
     private final ComplianceContextService contexts;
     private final Clock clock;
 
     public DocumentRequestService(VendorRepository vendors, DocumentTypeService documentTypes,
             UserAccountService users, OrganizationService organizations, OutboxService outbox,
             AuthorizationService authorization, AuditService audit, RateLimiter rateLimiter,
-            ComplianceContextService contexts, Clock clock) {
+            ComplianceContextService contexts, EmailSuppressionService suppression, Clock clock) {
         this.vendors = vendors;
         this.documentTypes = documentTypes;
         this.users = users;
@@ -68,6 +70,7 @@ public class DocumentRequestService {
         this.audit = audit;
         this.rateLimiter = rateLimiter;
         this.contexts = contexts;
+        this.suppression = suppression;
         this.clock = clock;
     }
 
@@ -96,6 +99,11 @@ public class DocumentRequestService {
         if (recipient == null || recipient.isBlank()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "vendor-no-email", "Vendor has no email",
                     "Add an email address to the vendor first.");
+        }
+        if (suppression.isSuppressed(recipient)) {
+            // The address unsubscribed from VendorFlow emails (any organization): reported to the requester, nothing queued.
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "address-unsubscribed", "Address unsubscribed",
+                    "This vendor address unsubscribed from VendorFlow emails. Contact the vendor another way.");
         }
         UserAccountService.UserSummary requester = users.require(tenant.userId());
         String zone = organizations.complianceSettings(orgId).timeZone();
