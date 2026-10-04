@@ -17,6 +17,7 @@ app:
       password-reset-request: 10000
       invitation: 10000
       resend-verification: 10000
+      token-redemption: 10000
       document-upload: 10000
       document-upload-user: 10000
       document-request-user: 10000

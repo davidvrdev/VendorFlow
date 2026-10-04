@@ -1,5 +1,7 @@
 package com.vendorflow.organization.application;
 
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.organization.domain.OrganizationSummary;
 import com.vendorflow.organization.infrastructure.MembershipRepository;
 import jakarta.servlet.FilterChain;

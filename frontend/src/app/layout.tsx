@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ZodCspConfig } from "@/components/zod-csp-config";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -12,7 +14,9 @@ export const metadata: Metadata = {
     "Upload your vendor list. VendorFlow tells you what is missing, what is expiring, and who you need to chase.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // The CSP nonce is per request, so no page may be prerendered (docs: content-security-policy.md).
+  await connection();
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
@@ -22,6 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           Skip to main content
         </a>
+        <ZodCspConfig />
         {children}
         <Toaster richColors closeButton />
       </body>

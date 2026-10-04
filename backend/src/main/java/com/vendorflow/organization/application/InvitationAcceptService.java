@@ -8,7 +8,7 @@ import com.vendorflow.identity.application.TokenGenerator;
 import com.vendorflow.identity.application.UserAccountService;
 import com.vendorflow.organization.api.AcceptInvitationRequest;
 import com.vendorflow.organization.domain.Invitation;
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.organization.infrastructure.InvitationRepository;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.FieldViolation;

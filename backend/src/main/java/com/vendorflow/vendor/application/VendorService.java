@@ -14,7 +14,7 @@ import com.vendorflow.document.application.DocumentReadService;
 import com.vendorflow.document.application.DocumentTypeService;
 import com.vendorflow.identity.application.UserAccountService;
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.FieldViolation;

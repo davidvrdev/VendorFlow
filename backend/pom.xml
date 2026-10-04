@@ -18,6 +18,11 @@
 		<argLine></argLine>
 		<java.version>21</java.version>
 		<maven.compiler.release>21</maven.compiler.release>
+		<!-- Security patch overrides of Spring Boot 4.1.1 managed versions (OSV baseline 2026-10-04, docs/SECURITY.md section 12):
+		     Tomcat 11.0.24 -> 11.0.25 (CVE-2026-65905, -65182, -68525) and Jackson 3.1.5 -> 3.1.7 (CVE-2026-89425, -89407,
+		     -91777, -91776, -83557, -68497, -19032). Remove each override once the Spring Boot parent manages a fixed version. -->
+		<tomcat.version>11.0.25</tomcat.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -113,6 +118,12 @@
 			<artifactId>testcontainers-postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>com.tngtech.archunit</groupId>
+			<artifactId>archunit</artifactId>
+			<version>1.5.1</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -127,6 +138,45 @@
 	</build>
 
 	<profiles>
+		<!--
+			Opt-in dependency vulnerability scan: ./mvnw -Psecurity-scan verify -DskipTests (or: ./mvnw -Psecurity-scan org.owasp:dependency-check-maven:check).
+			Not part of the default build: the NVD feed needs a free API key (https://nvd.nist.gov/developers/request-an-api-key)
+			in the NVD_API_KEY environment variable, otherwise the first download is rate limited to hours. Fails the build for
+			any CVSS >= 7 (high/critical) in compile/runtime dependencies; test-scope dependencies are skipped (dependency-check
+			default). Reports: target/dependency-check-report.html|json. Suppressions need a reason: dependency-check-suppressions.xml.
+		-->
+		<profile>
+			<id>security-scan</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>13.0.0</version>
+						<configuration>
+							<failBuildOnCVSS>7</failBuildOnCVSS>
+							<nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+							<formats>
+								<format>HTML</format>
+								<format>JSON</format>
+							</formats>
+							<!-- Sonatype OSS Index now requires credentials; OSV covers the same ground in CI (security-scan.yml). -->
+							<ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+							<suppressionFiles>
+								<suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+							</suppressionFiles>
+						</configuration>
+						<executions>
+							<execution>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
 		<!--
 			JDK 25 on Windows: NIO creates a Unix-domain socket for its internal wake-up pipe in java.io.tmpdir, which
 			fails on some machines ("Unable to establish loopback connection") and breaks embedded-Tomcat tests.

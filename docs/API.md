@@ -107,7 +107,7 @@ Rules:
   account is created with `emailVerified=true` (the token proves mailbox ownership) and a session starts. If no session
   and the account exists: **409** `title: "Sign in to accept"`.
 - Rate limits (per client IP, in-process): login 10/min, signup 5/min, password-reset request 5/min,
-  invitation lookup/accept 20/min, resend-verification 3/min → **429** with `Retry-After`.
+  invitation lookup/accept 20/min, resend-verification 3/min, token redemption (`verify-email` + `password-reset/confirm`, shared) 20/min → **429** with `Retry-After`.
 
 **Implemented in Phase 1 / B1 (auth, session, org settings) — exact client flow and details:**
 1. App start / before the first unsafe request: if there is no `XSRF-TOKEN` cookie, `GET /api/v1/auth/csrf` (204; sets

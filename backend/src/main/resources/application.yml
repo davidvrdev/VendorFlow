@@ -91,6 +91,8 @@ app:
       password-reset-request: 5
       invitation: 20
       resend-verification: 3
+      # POST /auth/verify-email and /auth/password-reset/confirm (shared budget per IP)
+      token-redemption: 20
       # POST /api/v1/vendors/{id}/documents (multipart upload)
       document-upload: 30
       # same endpoint, per authenticated user id (checked in DocumentUploadService)

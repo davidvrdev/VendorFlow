@@ -1,5 +1,7 @@
 package com.vendorflow.organization.domain;
 
+import com.vendorflow.shared.tenant.Role;
+
 import com.vendorflow.shared.persistence.UuidEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

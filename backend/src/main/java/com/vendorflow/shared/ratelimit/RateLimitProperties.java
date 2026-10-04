@@ -22,6 +22,7 @@ public class RateLimitProperties {
             Map.entry("password-reset-request", 5),
             Map.entry("invitation", 20),
             Map.entry("resend-verification", 3),
+            Map.entry("token-redemption", 20),
             Map.entry("document-upload", 30),
             Map.entry("document-upload-user", 30),
             Map.entry("document-request-user", 30),

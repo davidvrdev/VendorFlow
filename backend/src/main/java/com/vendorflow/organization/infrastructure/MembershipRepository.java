@@ -3,7 +3,7 @@ package com.vendorflow.organization.infrastructure;
 import com.vendorflow.organization.domain.MemberView;
 import com.vendorflow.organization.domain.Membership;
 import com.vendorflow.organization.domain.OrganizationSummary;
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;

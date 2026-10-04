@@ -6,7 +6,7 @@ import com.vendorflow.billing.domain.Subscription;
 import com.vendorflow.billing.domain.SubscriptionAccess;
 import com.vendorflow.billing.infrastructure.SubscriptionRepository;
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.OrganizationCreatedEvent;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.organization.domain.RolePermissions;

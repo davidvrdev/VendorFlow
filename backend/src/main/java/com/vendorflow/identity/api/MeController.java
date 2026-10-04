@@ -2,7 +2,7 @@ package com.vendorflow.identity.api;
 
 import com.vendorflow.identity.application.CurrentUser;
 import com.vendorflow.identity.application.MeService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;

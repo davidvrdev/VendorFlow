@@ -1,11 +1,13 @@
 package com.vendorflow.organization.application;
 
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.audit.AuditService;
 import com.vendorflow.identity.application.UserAccountService;
 import com.vendorflow.organization.domain.MemberView;
 import com.vendorflow.organization.domain.Membership;
 import com.vendorflow.organization.domain.Permission;
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.organization.domain.RolePermissions;
 import com.vendorflow.organization.infrastructure.MembershipRepository;
 import com.vendorflow.shared.error.ApiException;

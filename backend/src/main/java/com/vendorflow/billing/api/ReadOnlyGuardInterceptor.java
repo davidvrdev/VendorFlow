@@ -2,7 +2,7 @@ package com.vendorflow.billing.api;
 
 import com.vendorflow.billing.application.BillingProperties;
 import com.vendorflow.billing.application.SubscriptionService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.shared.error.Problems;
 import com.vendorflow.shared.security.ProblemJsonWriter;
 import jakarta.servlet.http.HttpServletRequest;

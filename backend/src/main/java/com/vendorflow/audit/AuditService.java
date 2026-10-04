@@ -1,6 +1,6 @@
 package com.vendorflow.audit;
 
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.shared.web.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;

@@ -45,6 +45,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             "/api/v1/invitations/lookup", "invitation",
             "/api/v1/invitations/accept", "invitation",
             "/api/v1/auth/resend-verification", "resend-verification",
+            // Unauthenticated token redemption: tokens are 256-bit random, so guessing is hopeless, but each call is a
+            // DB lookup an anonymous caller should not be able to repeat without bound.
+            "/api/v1/auth/verify-email", "token-redemption",
+            "/api/v1/auth/password-reset/confirm", "token-redemption",
             "/api/v1/webhooks/stripe", "stripe-webhook");
 
     /** POST paths with a variable segment (normalized, lower case): pattern -> rule name. */

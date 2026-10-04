@@ -5,7 +5,7 @@ import com.vendorflow.document.api.DocumentTypeView;
 import com.vendorflow.document.application.DocumentTypeService;
 import com.vendorflow.document.application.FilenameSanitizer;
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.NotFoundException;

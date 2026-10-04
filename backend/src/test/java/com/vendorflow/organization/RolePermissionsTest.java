@@ -4,7 +4,7 @@ import static com.vendorflow.organization.domain.Permission.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.vendorflow.organization.domain.Permission;
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.organization.domain.RolePermissions;
 import java.util.EnumSet;
 import java.util.Set;

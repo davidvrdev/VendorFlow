@@ -9,7 +9,7 @@ import com.vendorflow.notification.NotificationKind;
 import com.vendorflow.notification.OutboxService;
 import com.vendorflow.organization.application.AuthorizationService;
 import com.vendorflow.organization.application.OrganizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.NotFoundException;

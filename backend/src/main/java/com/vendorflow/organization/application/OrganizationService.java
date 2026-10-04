@@ -1,5 +1,7 @@
 package com.vendorflow.organization.application;
 
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.audit.AuditService;
 import com.vendorflow.organization.api.OrganizationView;
 import com.vendorflow.organization.api.UpdateOrganizationRequest;
@@ -8,7 +10,7 @@ import com.vendorflow.organization.domain.Organization;
 import com.vendorflow.organization.domain.OrganizationCreatedEvent;
 import com.vendorflow.organization.domain.OrganizationSummary;
 import com.vendorflow.organization.domain.Permission;
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.organization.infrastructure.MembershipRepository;
 import com.vendorflow.organization.infrastructure.OrganizationRepository;
 import com.vendorflow.shared.error.FieldViolation;

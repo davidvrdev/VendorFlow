@@ -3,6 +3,7 @@ package com.vendorflow.shared.security;
 import com.vendorflow.shared.error.Problems;
 import java.util.Map;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 
 /**
@@ -38,6 +40,13 @@ public class SecurityConfig {
 
     public static final String CSRF_COOKIE = "XSRF-TOKEN";
     public static final String CSRF_HEADER = "X-XSRF-TOKEN";
+
+    /** Strict policy for JSON responses: nothing may load or embed; cannot be framed. */
+    public static final String API_CSP = "default-src 'none'; frame-ancestors 'none'";
+    public static final String PERMISSIONS_POLICY =
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), "
+                    + "payment=(), usb=()";
+    static final long HSTS_SECONDS = 31_536_000L;
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemJsonWriter writer,
@@ -65,6 +74,19 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/api/v1/webhooks/stripe")
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new HeaderOnlyCsrfTokenRequestHandler()))
+                .headers(headers -> headers
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .frameOptions(frame -> frame.deny())
+                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER))
+                        // The API only ever returns JSON (or an attachment that sets its own, stricter "sandbox" CSP and
+                        // wins because Spring Security does not overwrite a header the handler already set).
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(API_CSP))
+                        .permissionsPolicyHeader(pp -> pp.policy(PERMISSIONS_POLICY))
+                        // Written only on requests that are secure (TLS, or X-Forwarded-Proto from a trusted proxy),
+                        // so plain-http local development is unaffected. Cache-Control: no-store comes from the default
+                        // cacheControl writer (also Pragma and Expires).
+                        .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true)
+                                .maxAgeInSeconds(HSTS_SECONDS)))
                 .securityContext(sc -> sc.securityContextRepository(securityContextRepository))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)

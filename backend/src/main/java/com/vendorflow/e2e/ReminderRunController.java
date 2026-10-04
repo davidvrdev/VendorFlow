@@ -1,7 +1,7 @@
 package com.vendorflow.e2e;
 
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.reminder.ReminderService;
 import com.vendorflow.shared.error.NotFoundException;

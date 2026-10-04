@@ -1,5 +1,7 @@
 package com.vendorflow.organization.api;
 
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.organization.application.OrganizationService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;

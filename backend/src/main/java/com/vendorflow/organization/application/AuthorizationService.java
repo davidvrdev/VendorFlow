@@ -1,5 +1,9 @@
 package com.vendorflow.organization.application;
 
+import com.vendorflow.shared.tenant.Role;
+
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.organization.domain.RolePermissions;
 import org.slf4j.Logger;

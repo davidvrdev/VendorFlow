@@ -1,5 +1,7 @@
 package com.vendorflow.identity.application;
 
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.identity.api.Me;
 import com.vendorflow.identity.domain.AppUser;
 import com.vendorflow.identity.infrastructure.AppUserRepository;

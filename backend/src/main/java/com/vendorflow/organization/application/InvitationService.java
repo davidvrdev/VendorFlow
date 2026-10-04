@@ -1,5 +1,7 @@
 package com.vendorflow.organization.application;
 
+import com.vendorflow.shared.tenant.TenantContext;
+
 import com.vendorflow.audit.AuditService;
 import com.vendorflow.identity.application.TokenGenerator;
 import com.vendorflow.identity.application.UserAccountService;
@@ -8,7 +10,7 @@ import com.vendorflow.notification.OutboxService;
 import com.vendorflow.organization.domain.Invitation;
 import com.vendorflow.organization.domain.InvitationView;
 import com.vendorflow.organization.domain.Permission;
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.organization.infrastructure.InvitationRepository;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.NotFoundException;

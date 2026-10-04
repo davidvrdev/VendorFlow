@@ -58,6 +58,10 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Client bundle must not contain secrets
+        run: npm run check:bundle-secrets
+      - name: Audit production dependencies (fail on high/critical)
+        run: npm audit --omit=dev --audit-level=high
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: E2E smoke

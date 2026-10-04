@@ -6,7 +6,7 @@ import com.vendorflow.dashboard.api.AttentionItem;
 import com.vendorflow.dashboard.api.DashboardSummary;
 import com.vendorflow.dashboard.infrastructure.DashboardRepository;
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.web.PageResponse;
 import org.springframework.data.domain.Pageable;

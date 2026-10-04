@@ -1,5 +1,7 @@
 package com.vendorflow.organization.domain;
 
+import com.vendorflow.shared.tenant.Role;
+
 import java.time.Instant;
 import java.util.UUID;
 

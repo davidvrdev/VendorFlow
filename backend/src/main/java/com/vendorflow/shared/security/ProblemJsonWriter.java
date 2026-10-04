@@ -33,6 +33,10 @@ public class ProblemJsonWriter {
         if (pd.getProperties() != null) {
             body.putAll(pd.getProperties());
         }
+        // These responses are written by filters that can run before (rate limit) or outside the security header
+        // writers, so the two headers that matter for an error body are set here too.
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Cache-Control", "no-store");
         response.setStatus(pd.getStatus());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");

@@ -8,7 +8,7 @@ import com.vendorflow.document.api.DocumentTypeView;
 import com.vendorflow.document.domain.DocumentType;
 import com.vendorflow.document.infrastructure.DocumentTypeRepository;
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.OrganizationCreatedEvent;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.error.ApiException;

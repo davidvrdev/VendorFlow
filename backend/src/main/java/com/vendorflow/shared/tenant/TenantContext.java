@@ -1,6 +1,6 @@
-package com.vendorflow.organization.application;
+package com.vendorflow.shared.tenant;
 
-import com.vendorflow.organization.domain.Role;
+import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.shared.error.NoActiveOrganizationException;
 import java.util.Optional;
 import java.util.UUID;

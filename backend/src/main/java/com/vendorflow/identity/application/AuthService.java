@@ -8,7 +8,7 @@ import com.vendorflow.identity.domain.AppUser;
 import com.vendorflow.identity.infrastructure.AppUserRepository;
 import com.vendorflow.organization.application.ActiveOrganizationSession;
 import com.vendorflow.organization.application.OrganizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.OrganizationSummary;
 import com.vendorflow.shared.error.ApiException;
 import jakarta.servlet.http.HttpServletRequest;

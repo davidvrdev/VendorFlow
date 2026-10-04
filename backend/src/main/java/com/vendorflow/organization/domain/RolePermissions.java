@@ -1,5 +1,7 @@
 package com.vendorflow.organization.domain;
 
+import com.vendorflow.shared.tenant.Role;
+
 import static com.vendorflow.organization.domain.Permission.*;
 
 import java.util.EnumMap;

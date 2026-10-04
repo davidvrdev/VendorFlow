@@ -4,7 +4,7 @@ import com.vendorflow.audit.AuditService;
 import com.vendorflow.compliance.application.ComplianceContextService;
 import com.vendorflow.compliance.domain.ComplianceSummary;
 import com.vendorflow.organization.application.AuthorizationService;
-import com.vendorflow.organization.application.TenantContext;
+import com.vendorflow.shared.tenant.TenantContext;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.ratelimit.RateLimiter;
