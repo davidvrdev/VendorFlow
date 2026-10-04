@@ -4,7 +4,7 @@ import { expect, type APIRequestContext } from "@playwright/test";
 // not through the Next proxy, because it is a test-only endpoint outside /api/v1.
 const BACKEND = "http://localhost:8080";
 
-export type MailKind = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "INVITATION" | "DOCUMENT_REQUEST" | "COMPLIANCE_DIGEST";
+export type MailKind = "EMAIL_VERIFICATION" | "PASSWORD_RESET" | "INVITATION" | "DOCUMENT_REQUEST" | "COMPLIANCE_DIGEST" | "VENDOR_CHASE" | "CHASING_STAFF_NOTICE";
 
 interface StoredMessage {
   kind: MailKind;
@@ -67,4 +67,22 @@ export async function waitForMessage(request: APIRequestContext, to: string, kin
     .toBeGreaterThanOrEqual(minCount);
   const message = latest as StoredMessage;
   return { subject: message.subject, content: [message.subject, message.text, message.body, message.html].filter(Boolean).join(" ") };
+}
+
+/** Wait for the Nth message of `kind` to `to` and return ALL its links (a chase email has an upload and an unsubscribe link). */
+export async function allLinks(request: APIRequestContext, to: string, kind: MailKind, minCount = 1): Promise<string[]> {
+  let links: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get(`${BACKEND}/api/test/mailbox`, { params: { to } });
+        if (!response.ok()) return 0;
+        const messages = ((await response.json()) as StoredMessage[]).filter((m) => m.kind === kind);
+        links = messages.at(-1)?.links ?? [];
+        return messages.length;
+      },
+      { message: `waiting for ${kind} email to ${to}`, timeout: 30_000, intervals: [300, 500, 1000] },
+    )
+    .toBeGreaterThanOrEqual(minCount);
+  return links;
 }

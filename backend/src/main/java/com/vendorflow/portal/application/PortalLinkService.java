@@ -5,6 +5,7 @@ import com.vendorflow.document.api.DocumentTypeView;
 import com.vendorflow.document.application.DocumentTypeService;
 import com.vendorflow.identity.application.TokenGenerator;
 import com.vendorflow.identity.application.UserAccountService;
+import com.vendorflow.notification.EmailSuppressionService;
 import com.vendorflow.notification.NotificationKind;
 import com.vendorflow.notification.OutboxService;
 import com.vendorflow.organization.application.AuthorizationService;
@@ -13,6 +14,7 @@ import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.portal.api.CreateUploadLinkRequest;
 import com.vendorflow.portal.api.CreatedUploadLink;
 import com.vendorflow.portal.api.UploadLinkView;
+import com.vendorflow.portal.domain.LinkStatus;
 import com.vendorflow.portal.domain.VendorUploadLink;
 import com.vendorflow.portal.domain.VendorUploadLinkType;
 import com.vendorflow.portal.infrastructure.VendorUploadLinkRepository;
@@ -43,6 +45,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -69,6 +72,7 @@ public class PortalLinkService {
     private final UserAccountService users;
     private final OrganizationService organizations;
     private final OutboxService outbox;
+    private final EmailSuppressionService suppression;
     private final AuditService audit;
     private final RateLimiter rateLimiter;
     private final Clock clock;
@@ -77,8 +81,8 @@ public class PortalLinkService {
     public PortalLinkService(AuthorizationService authorization, VendorService vendors,
             DocumentTypeService documentTypes, VendorUploadLinkRepository links,
             VendorUploadLinkTypeRepository linkTypes, TokenGenerator tokens, UserAccountService users,
-            OrganizationService organizations, OutboxService outbox, AuditService audit, RateLimiter rateLimiter,
-            Clock clock, @Value("${app.base-url}") String baseUrl) {
+            OrganizationService organizations, OutboxService outbox, EmailSuppressionService suppression, AuditService audit,
+            RateLimiter rateLimiter, Clock clock, @Value("${app.base-url}") String baseUrl) {
         this.authorization = authorization;
         this.vendors = vendors;
         this.documentTypes = documentTypes;
@@ -88,6 +92,7 @@ public class PortalLinkService {
         this.users = users;
         this.organizations = organizations;
         this.outbox = outbox;
+        this.suppression = suppression;
         this.audit = audit;
         this.rateLimiter = rateLimiter;
         this.clock = clock;
@@ -124,6 +129,10 @@ public class PortalLinkService {
                     "Add an email address to the vendor first.");
         }
 
+        // An unsubscribed address gets the link (staff can still hand it over another way) but no email; the response says why.
+        boolean emailSuppressed = sendEmail && suppression.isSuppressed(vendor.email());
+        boolean emailQueued = sendEmail && !emailSuppressed;
+
         Instant now = clock.instant();
         int days = request.expiresInDays() == null ? DEFAULT_EXPIRY_DAYS : request.expiresInDays();
         int maxUploads = request.maxUploads() == null ? DEFAULT_MAX_UPLOADS : request.maxUploads();
@@ -141,10 +150,13 @@ public class PortalLinkService {
         metadata.put("expiresAt", link.getExpiresAt().toString());
         metadata.put("maxUploads", maxUploads);
         metadata.put("maxTotalBytes", maxTotalBytes);
-        metadata.put("emailed", sendEmail);
+        metadata.put("emailed", emailQueued);
+        if (emailSuppressed) {
+            metadata.put("emailSkipped", "EMAIL_NOT_DELIVERABLE");
+        }
         audit.record("portal_link.created", ENTITY_TYPE, id, metadata);
 
-        if (sendEmail) {
+        if (emailQueued) {
             UserAccountService.UserSummary requester = users.require(tenant.userId());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("organizationName", organizations.nameOf(orgId));
@@ -163,9 +175,49 @@ public class PortalLinkService {
             payload.put("portal", true);
             outbox.enqueue(NotificationKind.DOCUMENT_REQUEST, orgId, vendor.email(), "portallink:" + id, payload);
         }
-        log.info("Portal link created: id={} org={} vendor={} emailed={}", id, orgId, vendorId, sendEmail);
+        log.info("Portal link created: id={} org={} vendor={} emailed={}", id, orgId, vendorId, emailQueued);
         return new CreatedUploadLink(view(link, types.stream().map(t -> new UploadLinkView.TypeRef(t.id(), t.name()))
-                .toList(), tenant.userId()), baseUrl + "/portal#token=" + token, sendEmail);
+                .toList(), tenant.userId()), baseUrl + "/portal#token=" + token, emailQueued,
+                emailSuppressed ? "EMAIL_NOT_DELIVERABLE" : null);
+    }
+
+    /** A link issued by the system (automated chasing): the raw token is returned ONCE to the caller, never stored. */
+    public record IssuedLink(UUID id, String token, Instant expiresAt) {
+    }
+
+    /**
+     * Creates a link without a tenant context or a staff user (the scheduler is the actor): no authorization, no rate
+     * limit, {@code created_by_user_id} NULL. The caller has already verified that the vendor is active and that the
+     * types are active requirements of it, and writes the audit row (it knows the reason). Joins the caller's
+     * transaction. Default budgets (20 uploads, 100 MB) as for staff links.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public IssuedLink issueSystemLink(UUID orgId, UUID vendorId, UUID linkId, Collection<UUID> typeIds,
+            int expiresInDays) {
+        Instant now = clock.instant();
+        String token = tokens.newToken();
+        VendorUploadLink link = links.saveAndFlush(new VendorUploadLink(linkId, orgId, vendorId, tokens.hash(token),
+                null, now.plus(Duration.ofDays(expiresInDays)), DEFAULT_MAX_UPLOADS,
+                DEFAULT_MAX_TOTAL_MB * 1024L * 1024L, now));
+        linkTypes.saveAll(typeIds.stream().map(t -> new VendorUploadLinkType(orgId, linkId, t)).toList());
+        return new IssuedLink(linkId, token, link.getExpiresAt());
+    }
+
+    /** Revokes (idempotently) links of an organization; returns how many were still live. System callers only. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int revokeSystemLinks(UUID orgId, Collection<UUID> linkIds) {
+        return linkIds.isEmpty() ? 0 : links.revokeAll(orgId, linkIds, clock.instant());
+    }
+
+    /** Derived status of links of an organization (one query), for read models of other features. */
+    @Transactional(readOnly = true)
+    public Map<UUID, LinkStatus> statuses(UUID orgId, Collection<UUID> linkIds) {
+        if (linkIds.isEmpty()) {
+            return Map.of();
+        }
+        Instant now = clock.instant();
+        return links.findByIds(orgId, linkIds).stream()
+                .collect(Collectors.toMap(VendorUploadLink::getId, l -> l.statusAt(now)));
     }
 
     @Transactional(readOnly = true)

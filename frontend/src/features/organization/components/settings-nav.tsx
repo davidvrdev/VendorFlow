@@ -17,6 +17,9 @@ const DOCUMENT_TYPES_ITEM = { href: "/settings/document-types", label: "Document
 
 const EMAIL_ACTIVITY_ITEM = { href: "/settings/email-activity", label: "Email activity" };
 
+// Every role may read the schedule; only owners/admins can save (the page says so).
+const CHASING_ITEM = { href: "/settings/chasing", label: "Vendor follow-ups" };
+
 const BILLING_ITEM = { href: "/settings/billing", label: "Billing" };
 
 /** Pure: which tabs a role sees. Cosmetic: pages redirect and the API enforces. */
@@ -25,6 +28,7 @@ export function settingsNavItems(role: Role | null | undefined): { href: string;
     ...ITEMS,
     ...(can(role, "REQUIREMENTS_MANAGE") ? [DOCUMENT_TYPES_ITEM] : []),
     ...(can(role, "EMAIL_ACTIVITY_VIEW") ? [EMAIL_ACTIVITY_ITEM] : []),
+    CHASING_ITEM,
     // Every member may see status; only owners get buttons (the page says "ask an owner").
     BILLING_ITEM,
   ];

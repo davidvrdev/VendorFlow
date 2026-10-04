@@ -78,6 +78,44 @@ public class OutboxService {
         return inserted == 1;
     }
 
+    /**
+     * Lower-cased recipient addresses of this organization that already got a notification of one of the given kinds
+     * created in {@code [from, to)}. One query, used by automated chasing to keep "one email per recipient per local
+     * day" across chases and manual document requests. Addresses are returned to the caller only; never logged.
+     */
+    @Transactional(readOnly = true)
+    public Set<String> recipientsNotifiedBetween(UUID organizationId, java.util.Collection<NotificationKind> kinds,
+            java.time.Instant from, java.time.Instant to) {
+        return Set.copyOf(jdbc.sql("""
+                SELECT DISTINCT lower(recipient_email) FROM notification
+                WHERE organization_id = :org AND kind IN (:kinds) AND created_at >= :from AND created_at < :to
+                """)
+                .param("org", organizationId)
+                .param("kinds", kinds.stream().map(Enum::name).toList())
+                .param("from", OffsetDateTime.ofInstant(from, ZoneOffset.UTC))
+                .param("to", OffsetDateTime.ofInstant(to, ZoneOffset.UTC))
+                .query(String.class).list());
+    }
+
+    /**
+     * Marks the not-yet-delivered chase emails of one vendor DEAD and removes their raw tokens (the vendor was paused or
+     * opted out after the row was enqueued). Joins the caller's transaction. The payload carries {@code vendorId}.
+     *
+     * @return how many rows were cancelled
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int cancelPendingVendorChases(UUID organizationId, UUID vendorId, String reason) {
+        return jdbc.sql("""
+                UPDATE notification
+                SET status = 'DEAD', payload = payload - 'token' - 'optOutToken', last_error = :reason,
+                    updated_at = :now
+                WHERE organization_id = :org AND kind = 'VENDOR_CHASE' AND status IN ('PENDING', 'FAILED')
+                  AND payload ->> 'vendorId' = :vendor
+                """)
+                .param("org", organizationId).param("vendor", vendorId.toString()).param("reason", reason)
+                .param("now", OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)).update();
+    }
+
     private int recentAccountEmails(String recipientEmail, OffsetDateTime now) {
         return jdbc.sql("""
                 SELECT count(*) FROM notification

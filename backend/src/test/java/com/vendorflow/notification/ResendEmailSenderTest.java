@@ -71,6 +71,20 @@ class ResendEmailSenderTest {
     }
 
     @Test
+    void sendsCustomHeadersForListUnsubscribe() {
+        AtomicReference<JsonNode> body = new AtomicReference<>();
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andExpect(request -> body.set(json.readTree(((MockClientHttpRequest) request).getBodyAsString())))
+                .andRespond(withSuccess("{\"id\":\"abc\"}", MediaType.APPLICATION_JSON));
+        sender.send(new EmailMessage(UUID.randomUUID(), "k", "vendor@example.com", "s", "t", "<p>h</p>",
+                NotificationKind.VENDOR_CHASE, null, java.util.Map.of("List-Unsubscribe", "<https://x.example/u/abc>",
+                        "List-Unsubscribe-Post", "List-Unsubscribe=One-Click")));
+        JsonNode headers = body.get().get("headers");
+        assertThat(headers.get("List-Unsubscribe").asString()).isEqualTo("<https://x.example/u/abc>");
+        assertThat(headers.get("List-Unsubscribe-Post").asString()).isEqualTo("List-Unsubscribe=One-Click");
+    }
+
+    @Test
     void omitsReplyToWhenThereIsNone() {
         AtomicReference<JsonNode> body = new AtomicReference<>();
         server.expect(requestTo("https://api.resend.com/emails"))
@@ -78,6 +92,7 @@ class ResendEmailSenderTest {
                 .andRespond(withSuccess("{\"id\":\"abc\"}", MediaType.APPLICATION_JSON));
         sender.send(message(null));
         assertThat(body.get().has("reply_to")).isFalse();
+        assertThat(body.get().has("headers")).isFalse();
     }
 
     @Test

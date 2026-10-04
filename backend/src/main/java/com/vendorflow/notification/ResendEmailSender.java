@@ -29,7 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>Send email: {@code POST https://api.resend.com/emails}
  *       (https://resend.com/docs/api-reference/emails/send-email). Header {@code Authorization: Bearer re_...}.
  *       Body: required {@code from} (string, "Name &lt;email&gt;" allowed), {@code to} (string or string[], max 50),
- *       {@code subject}; optional {@code html}, {@code text}, {@code reply_to} (string or string[]), ...
+ *       {@code subject}; optional {@code html}, {@code text}, {@code reply_to} (string or string[]), {@code headers} (object, custom headers), ...
  *       Success: HTTP 200 {@code {"id": "..."}}.</li>
  *   <li>Idempotency (https://resend.com/docs/dashboard/emails/idempotency-keys): header {@code Idempotency-Key},
  *       1..256 characters, kept 24 h; a replay returns the same response without sending again. 409
@@ -113,6 +113,10 @@ public class ResendEmailSender implements EmailSender {
         body.put("text", message.textBody());
         if (message.replyTo() != null && !message.replyTo().isBlank()) {
             body.put("reply_to", message.replyTo());
+        }
+        if (!message.headers().isEmpty()) {
+            // Resend "headers" (custom email headers, object of name to value): List-Unsubscribe and friends.
+            body.put("headers", message.headers());
         }
         String payload = json.writeValueAsString(body);
 

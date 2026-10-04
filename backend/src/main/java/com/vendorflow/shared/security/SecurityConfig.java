@@ -68,7 +68,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
                         // Vendor portal (ADR-0011): the token in the X-Portal-Token header is the credential. Exactly these two paths.
                         .requestMatchers(HttpMethod.GET, "/api/v1/portal/link").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/portal/link/documents").permitAll();
+                        .requestMatchers(HttpMethod.POST, "/api/v1/portal/link/documents").permitAll()
+                        // Vendor unsubscribe (ADR-0012): same header-token convention; GET never changes state.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/portal/chasing/opt-out").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/portal/chasing/opt-out").permitAll()
+                        // RFC 8058 one-click (List-Unsubscribe): the token is the single path segment. Public for every method so a
+                        // GET gets the controller's 405 (never a state change, never a 401 that hints the path exists).
+                        .requestMatchers("/api/v1/portal/chasing/one-click/*").permitAll();
                     // E2E-only test mailbox: public only under profile e2e (ProfileGuard forbids e2e + prod).
                     if (e2e) {
                         auth.requestMatchers("/api/test/mailbox").permitAll();
@@ -80,6 +86,10 @@ public class SecurityConfig {
                         // Portal upload: no cookie/session is read, so there is no ambient credential to forge a request with.
                         .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
                                 .matcher(HttpMethod.POST, "/api/v1/portal/link/documents"))
+                        .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
+                                .matcher(HttpMethod.POST, "/api/v1/portal/chasing/opt-out"))
+                        .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
+                                .matcher(HttpMethod.POST, "/api/v1/portal/chasing/one-click/{token}"))
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new HeaderOnlyCsrfTokenRequestHandler()))
                 .headers(headers -> headers

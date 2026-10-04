@@ -351,6 +351,15 @@ class ArchitectureTest {
     }
 
     @Test
+    void chasingIsALeafFeatureThatOnlyUsesOtherFeaturesThroughServices() {
+        // The profile-gated e2e test trigger (never in a production profile, see ProfileGuard) may run the tick, like the reminder one.
+        noClasses().that().resideOutsideOfPackage(ROOT + ".chasing..").and().resideOutsideOfPackage(ROOT + ".e2e..")
+                .should().dependOnClassesThat().resideInAPackage(ROOT + ".chasing..")
+                .because("chasing orchestrates portal/vendor/notification; nothing may depend back on it (no cycles)")
+                .check(production);
+    }
+
+    @Test
     void sharedPackageDoesNotDependOnFeatures() {
         // shared is the bottom layer: if it pointed at a feature, every feature would be in a cycle through it.
         noClasses().that().resideInAPackage(ROOT + ".shared..")

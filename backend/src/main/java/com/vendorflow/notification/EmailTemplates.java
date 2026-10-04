@@ -2,6 +2,7 @@ package com.vendorflow.notification;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.HtmlUtils;
@@ -14,10 +15,22 @@ import org.springframework.web.util.HtmlUtils;
 @Component
 public class EmailTemplates {
 
-    private final String baseUrl;
+    /** Upper bound of any interpolated name/line: a vendor-controlled value must not blow up a subject or a line. */
+    static final int MAX_LINE_LENGTH = 300;
+    /**
+     * C0/C1 controls (CR, LF, NUL...), the Unicode line/paragraph separators and the bidirectional controls (LRM, RLM, ALM,
+     * embeddings/overrides U+202A-202E, isolates U+2066-2069): the last ones can visually reorder a name or a link in a mail client.
+     */
+    private static final Pattern UNSAFE_CHARS =
+            Pattern.compile("[\\p{Cc}\\u2028\\u2029\\u200E\\u200F\\u061C\\u202A-\\u202E\\u2066-\\u2069]+");
 
-    public EmailTemplates(@Value("${app.base-url}") String baseUrl) {
+    private final String baseUrl;
+    private final String postalAddress;
+
+    public EmailTemplates(@Value("${app.base-url}") String baseUrl,
+            @Value("${vendorflow.mail.postal-address:}") String postalAddress) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        this.postalAddress = oneLine(postalAddress == null ? "" : postalAddress);
     }
 
     public RenderedEmail render(NotificationKind kind, Map<String, Object> payload) {
@@ -29,6 +42,8 @@ public class EmailTemplates {
             case DOCUMENT_REQUEST -> documentRequest(payload);
             case PORTAL_UPLOAD -> portalUpload(payload);
             case COMPLIANCE_DIGEST -> complianceDigest(payload);
+            case VENDOR_CHASE -> vendorChase(payload);
+            case CHASING_STAFF_NOTICE -> chasingStaffNotice(payload);
             default -> throw new IllegalArgumentException("No template for kind " + kind);
         };
     }
@@ -174,6 +189,118 @@ public class EmailTemplates {
         return new RenderedEmail(subject, text, html, replyTo);
     }
 
+    /**
+     * Automated follow-up to a vendor (ADR-0012). The payload carries two raw secrets, scrubbed after delivery: the portal
+     * upload token (token) and the unsubscribe token (optOutToken). Both links keep the token in the fragment.
+     */
+    private RenderedEmail vendorChase(Map<String, Object> payload) {
+        String organization = oneLine(required(payload, "organizationName"));
+        String vendor = oneLine(String.valueOf(payload.getOrDefault("vendorName", "")));
+        String contact = oneLine(String.valueOf(payload.getOrDefault("contactName", "")));
+        String expires = oneLine(String.valueOf(payload.getOrDefault("expiresAt", "")));
+        String uploadLink = baseUrl + "/portal#token=" + required(payload, "token");
+        String optOutLink = baseUrl + "/portal/unsubscribe#token=" + required(payload, "optOutToken");
+        String replyTo = payload.get("replyTo") == null ? null : oneLine(payload.get("replyTo").toString());
+        String greeting = contact.isBlank() ? "Hello" : "Hello " + contact;
+        String attempt = payload.get("attempt") instanceof Number a && payload.get("maxAttempts") instanceof Number m
+                ? " (reminder " + a.intValue() + " of " + m.intValue() + ")" : "";
+        List<String> lines = new java.util.ArrayList<>();
+        for (Map<String, Object> t : list(payload.get("types"))) {
+            String status = str(t, "status");
+            String date = str(t, "expirationDate");
+            String what = switch (status) {
+                case "EXPIRED" -> "expired" + (date.isBlank() ? "" : " on " + date);
+                case "EXPIRING" -> "expires" + (date.isBlank() ? " soon" : " on " + date);
+                default -> "missing";
+            };
+            lines.add(oneLine(str(t, "name")) + " - " + what);
+        }
+        String subject = organization + " still needs documents" + (vendor.isBlank() ? "" : " from " + vendor);
+        StringBuilder text = new StringBuilder(greeting + ",\n\n" + organization
+                + " uses VendorFlow to keep vendor paperwork up to date" + attempt + ". The following"
+                + (vendor.isBlank() ? "" : " for " + vendor) + " need your attention:\n\n");
+        StringBuilder html = new StringBuilder("<p>" + HtmlUtils.htmlEscape(greeting) + ",</p><p><strong>"
+                + HtmlUtils.htmlEscape(organization) + "</strong> uses VendorFlow to keep vendor paperwork up to date"
+                + HtmlUtils.htmlEscape(attempt) + ". The following"
+                + (vendor.isBlank() ? "" : " for " + HtmlUtils.htmlEscape(vendor)) + " need your attention:</p><ul>");
+        for (String line : lines) {
+            text.append("  - ").append(line).append('\n');
+            html.append("<li>").append(HtmlUtils.htmlEscape(line)).append("</li>");
+        }
+        html.append("</ul>");
+        text.append("\nUpload the files securely here (no account needed):\n").append(uploadLink).append("\n\n")
+                .append(expires.isBlank() ? "" : "This link expires on " + expires + ". ")
+                .append("Do not forward it: anyone with the link can upload files for your company.\n\n")
+                .append("Do not want these automatic reminders? Stop them here:\n").append(optOutLink).append('\n');
+        html.append("<p><a href=\"").append(HtmlUtils.htmlEscape(uploadLink))
+                .append("\">Upload your documents</a> (no account needed)</p><p>")
+                .append(expires.isBlank() ? "" : "This link expires on " + HtmlUtils.htmlEscape(expires) + ". ")
+                .append("Do not forward it: anyone with the link can upload files for your company.</p>")
+                .append("<p>Do not want these automatic reminders? <a href=\"").append(HtmlUtils.htmlEscape(optOutLink))
+                .append("\">Stop them here</a>.</p>");
+        // Identification (CAN-SPAM, and plain honesty: the vendor never heard of VendorFlow): who sent it, for whom, where.
+        String sentBy = "This email was sent by VendorFlow on behalf of " + organization + "."
+                + (postalAddress.isBlank() ? "" : " VendorFlow, " + postalAddress);
+        text.append("\n--\n").append(sentBy).append('\n');
+        html.append("<hr><p style=\"font-size:12px;color:#555\">").append(HtmlUtils.htmlEscape(sentBy)).append("</p>");
+        // RFC 8058 one-click unsubscribe: the mail client POSTs to the URL (no cookies, no JS, no page). The token is in the
+        // path because the header carries a URL; the endpoint answers GET with 405 so a prefetch cannot unsubscribe anyone.
+        Map<String, String> headers = Map.of(
+                "List-Unsubscribe", "<" + baseUrl + "/api/v1/portal/chasing/one-click/" + required(payload, "optOutToken") + ">",
+                "List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+        return new RenderedEmail(subject, text.toString(), html.toString(), replyTo, headers);
+    }
+
+    /** Staff notices of the chasing feature: no token and no upload link, only names and a link into the app. */
+    private RenderedEmail chasingStaffNotice(Map<String, Object> payload) {
+        String organization = oneLine(required(payload, "organizationName"));
+        String event = required(payload, "event");
+        List<Map<String, Object>> items = list(payload.get("items"));
+        String link = baseUrl + "/dashboard";
+        String subject;
+        String intro;
+        List<String> lines = new java.util.ArrayList<>();
+        switch (event) {
+            case "EXHAUSTED" -> {
+                subject = items.size() + (items.size() == 1 ? " vendor has" : " vendors have")
+                        + " not responded to automatic reminders";
+                intro = "Automatic reminders were sent the maximum number of times and these vendors still have "
+                        + "missing, expired or expiring documents. They will not be chased again; please follow up yourself:";
+                for (Map<String, Object> i : items) {
+                    lines.add(oneLine(str(i, "vendorName")) + " (" + str(i, "attempts") + " reminders sent)");
+                }
+            }
+            case "OPTED_OUT" -> {
+                subject = "A vendor stopped automatic reminders";
+                intro = "A vendor used the unsubscribe link in a reminder. Automatic reminders are paused for them:";
+                for (Map<String, Object> i : items) {
+                    lines.add(oneLine(str(i, "vendorName")));
+                }
+            }
+            default -> {
+                subject = "Automatic reminders sent to " + items.size() + (items.size() == 1 ? " vendor" : " vendors");
+                intro = "VendorFlow sent these vendors a reminder with a fresh upload link today:";
+                for (Map<String, Object> i : items) {
+                    Object types = i.get("types");
+                    lines.add(oneLine(str(i, "vendorName")) + (types instanceof List<?> l && !l.isEmpty()
+                            ? " - " + oneLine(l.stream().map(String::valueOf)
+                                    .collect(java.util.stream.Collectors.joining(", ")))
+                            : ""));
+                }
+            }
+        }
+        StringBuilder text = new StringBuilder(organization + "\n\n" + intro + "\n\n");
+        StringBuilder html = new StringBuilder("<p><strong>" + HtmlUtils.htmlEscape(organization) + "</strong></p><p>"
+                + HtmlUtils.htmlEscape(intro) + "</p><ul>");
+        for (String line : lines) {
+            text.append("  - ").append(line).append('\n');
+            html.append("<li>").append(HtmlUtils.htmlEscape(line)).append("</li>");
+        }
+        text.append("\nOpen your dashboard: ").append(link).append('\n');
+        html.append("</ul><p><a href=\"").append(HtmlUtils.htmlEscape(link)).append("\">Open your dashboard</a></p>");
+        return new RenderedEmail(subject, text.toString(), html.toString());
+    }
+
     @SuppressWarnings("unchecked")
     private RenderedEmail complianceDigest(Map<String, Object> payload) {
         String organization = oneLine(required(payload, "organizationName"));
@@ -242,9 +369,20 @@ public class EmailTemplates {
         return v == null ? "" : v.toString();
     }
 
-    /** Collapses control characters/line breaks so user-supplied names cannot inject headers or fake lines. */
-    private static String oneLine(String value) {
-        return value.replaceAll("\\p{Cntrl}+", " ").trim();
+    /**
+     * Collapses control characters, line/paragraph separators and bidi controls so user-supplied names cannot inject
+     * headers, fake lines or reorder text, and caps the length.
+     */
+    static String oneLine(String value) {
+        String cleaned = UNSAFE_CHARS.matcher(value).replaceAll(" ").trim();
+        if (cleaned.length() <= MAX_LINE_LENGTH) {
+            return cleaned;
+        }
+        int end = MAX_LINE_LENGTH - 1;
+        if (Character.isHighSurrogate(cleaned.charAt(end - 1))) {
+            end--; // never cut a surrogate pair in half
+        }
+        return cleaned.substring(0, end).trim() + "…";
     }
 
     private static String required(Map<String, Object> payload, String key) {

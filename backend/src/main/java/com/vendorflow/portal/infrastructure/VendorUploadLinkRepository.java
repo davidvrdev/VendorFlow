@@ -54,4 +54,17 @@ public interface VendorUploadLinkRepository extends JpaRepository<VendorUploadLi
             """)
     int claimUse(@Param("organizationId") UUID organizationId, @Param("id") UUID id, @Param("now") Instant now,
             @Param("bytes") long bytes);
+
+    /** Revokes several links of one organization at once (automated chasing replaces its previous link). */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update VendorUploadLink l set l.revokedAt = :now
+            where l.organizationId = :organizationId and l.id in :ids and l.revokedAt is null
+            """)
+    int revokeAll(@Param("organizationId") UUID organizationId, @Param("ids") java.util.Collection<UUID> ids,
+            @Param("now") Instant now);
+
+    @Query("select l from VendorUploadLink l where l.organizationId = :organizationId and l.id in :ids")
+    java.util.List<VendorUploadLink> findByIds(@Param("organizationId") UUID organizationId,
+            @Param("ids") java.util.Collection<UUID> ids);
 }

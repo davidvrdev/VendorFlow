@@ -177,6 +177,9 @@ vendorflow-api > Suspend), restore, resume, run the smoke test (1.9).
 | `Stripe webhook rejected` (many in a row) | wrong `STRIPE_WEBHOOK_SECRET`, or someone probing | check the secret |
 | `Notification permanently failed` / `status=DEAD` | an email will never be delivered | check Resend (domain, key, quota) |
 | `File scanner unavailable` | ClamAV is down or still starting: all uploads are refused | Render > vendorflow-clamav status and logs |
+| `Chasing vendor failed` (or the counter `vendorflow.chasing.vendor.failures` > 0) | automated chasing skipped a vendor because processing it threw; the line carries `organizationId`, `vendorId` and the exception class only; the other vendors were chased and the next hourly tick retries it | find the vendor, fix its data or the bug; repeated for the same vendor = a poison record |
+| `Automated chasing is enabled but vendorflow.mail.postal-address is not configured` | chasing is on for an organization but no chase is sent (CAN-SPAM postal address missing); logged once per process | set `VENDORFLOW_MAIL_POSTAL_ADDRESS` and redeploy |
+| `Chasing daily cap reached` | an organization hit `app.chasing.max-per-org-per-day` (200); the rest goes the next day | normal for big lists; raise the cap only deliberately |
 | `Outbox dispatch failed` | the email job crashes | ask the developer, include the log line |
 | `"log.level":"ERROR"` | anything unexpected | read the context |
 | `FILESYSTEM STORAGE IN PROD`, `BILLING IS DISABLED IN PROD` | an unsafe opt-in is active | remove the opt-in |

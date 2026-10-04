@@ -5,6 +5,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,16 +47,28 @@ public class OutboxDispatcher {
     private final TransactionTemplate tx;
     private final Clock clock;
     private final int batchSize;
+    private final EmailSuppressionService suppression;
+    private final List<DeliveryGuard> guards;
 
+    /** Without suppression list and guards (unit-style tests that build the dispatcher by hand). */
+    public OutboxDispatcher(NotificationRepository notifications, EmailSender emailSender, EmailTemplates templates,
+            PlatformTransactionManager transactionManager, Clock clock, int batchSize) {
+        this(notifications, emailSender, templates, transactionManager, clock, batchSize, null, null);
+    }
+
+    @Autowired
     public OutboxDispatcher(NotificationRepository notifications, EmailSender emailSender, EmailTemplates templates,
             PlatformTransactionManager transactionManager, Clock clock,
-            @Value("${app.outbox.dispatcher.batch-size:20}") int batchSize) {
+            @Value("${app.outbox.dispatcher.batch-size:20}") int batchSize, EmailSuppressionService suppression,
+            ObjectProvider<DeliveryGuard> guards) {
         this.notifications = notifications;
         this.emailSender = emailSender;
         this.templates = templates;
         this.tx = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.batchSize = batchSize;
+        this.suppression = suppression;
+        this.guards = guards == null ? List.of() : guards.orderedStream().toList();
     }
 
     /** @return number of notifications processed (sent or failed) in this batch */
@@ -76,10 +90,26 @@ public class OutboxDispatcher {
     }
 
     private void process(Notification n, Instant now) {
+        String blocked;
+        try {
+            blocked = blockReason(n);
+        } catch (RuntimeException e) {
+            // One misbehaving guard must not abort the batch transaction (and re-poison every later row): fail this row only.
+            n.markFailed(sanitize(e), now);
+            log.warn("Delivery guard failed: id={} kind={} attempts={} status={}", n.getId(), n.getKind(),
+                    n.getAttempts(), n.getStatus());
+            return;
+        }
+        if (blocked != null) {
+            // Backstop: the vendor paused/unsubscribed after the row was enqueued. Never sent; secrets are scrubbed.
+            n.markDead(blocked, now);
+            log.info("Notification dropped before sending: id={} kind={} reason={}", n.getId(), n.getKind(), blocked);
+            return;
+        }
         try {
             RenderedEmail email = templates.render(n.getKind(), n.getPayload());
             String providerId = emailSender.send(new EmailMessage(n.getId(), n.getIdempotencyKey(),
-                    n.getRecipientEmail(), email.subject(), email.textBody(), email.htmlBody(), n.getKind(), email.replyTo()));
+                    n.getRecipientEmail(), email.subject(), email.textBody(), email.htmlBody(), n.getKind(), email.replyTo(), email.headers()));
             n.markSent(providerId, now);
             log.info("Notification sent: id={} kind={}", n.getId(), n.getKind());
         } catch (EmailDeliveryException e) {
@@ -97,6 +127,22 @@ public class OutboxDispatcher {
             log.warn("Notification attempt failed: id={} kind={} attempts={} status={}", n.getId(), n.getKind(),
                     n.getAttempts(), n.getStatus());
         }
+    }
+
+    /** Marketing-adjacent kinds honour the global suppression list; features may veto their own kinds. */
+    private String blockReason(Notification n) {
+        if (suppression != null
+                && (n.getKind() == NotificationKind.VENDOR_CHASE || n.getKind() == NotificationKind.DOCUMENT_REQUEST)
+                && suppression.isSuppressed(n.getRecipientEmail())) {
+            return "Address unsubscribed";
+        }
+        for (DeliveryGuard guard : guards) {
+            String reason = guard.blockReason(n.getKind(), n.getOrganizationId(), n.getPayload());
+            if (reason != null) {
+                return reason;
+            }
+        }
+        return null;
     }
 
     static String sanitize(Exception e) {

@@ -10,3 +10,7 @@ app:
     session-cookie-secure: false # plain http on localhost
     # Local-only value; prod requires APP_IP_HASH_SECRET.
     ip-hash-secret: ${APP_IP_HASH_SECRET:local-dev-only-ip-hash-secret-change-me}
+
+vendorflow:
+  mail:
+    postal-address: ${VENDORFLOW_MAIL_POSTAL_ADDRESS:VendorFlow (local development), 1 Example Street, Springfield, USA}
