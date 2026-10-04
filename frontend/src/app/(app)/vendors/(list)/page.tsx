@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { can } from "@/features/organization/permissions";
 import { ListPagination } from "@/features/vendors/components/list-pagination";
 import { VendorToolbar } from "@/features/vendors/components/vendor-toolbar";
@@ -19,6 +19,7 @@ export default async function VendorsPage({ searchParams }: PageProps<"/vendors"
   const state = parseListState(await searchParams);
   const me = await requireMe();
   const canCreate = can(me.activeOrganization?.role, "VENDORS_WRITE");
+  const canImport = can(me.activeOrganization?.role, "ARCHIVE_AND_IMPORT");
 
   const [result, categories] = await Promise.all([fetchVendors(state), fetchCategories()]);
 
@@ -46,13 +47,15 @@ export default async function VendorsPage({ searchParams }: PageProps<"/vendors"
               Add vendor
             </Link>
           ) : null}
-          <Button variant="outline" disabled>
-            Import CSV — coming soon
-          </Button>
+          {canImport ? (
+            <Link href="/vendors/import" className={buttonVariants({ variant: "outline" })}>
+              Import CSV
+            </Link>
+          ) : null}
         </EmptyState>
       ) : (
         <>
-          <VendorToolbar state={state} categories={categories} canCreate={canCreate} />
+          <VendorToolbar state={state} categories={categories} canCreate={canCreate} canImport={canImport} totalItems={result.totalItems} />
           {inactiveExist ? (
             <EmptyState icon={SearchX} title="No active vendors" description="All of your vendors are inactive.">
               <Link href="/vendors?status=INACTIVE" className={buttonVariants({ variant: "outline" })}>

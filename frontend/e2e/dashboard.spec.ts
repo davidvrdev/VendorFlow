@@ -31,7 +31,7 @@ test("dashboard: onboarding, attention list actions and filtered tile links", as
   // New org: onboarding empty state.
   await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Add your first vendor" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Import CSV — coming soon" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Import CSV" })).toHaveAttribute("href", "/vendors/import");
 
   await addVendor(page, alpha);
   await addVendor(page, beta);

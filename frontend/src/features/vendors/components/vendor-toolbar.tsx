@@ -1,10 +1,8 @@
 "use client";
 
-import { Plus, Search } from "lucide-react";
-import Link from "next/link";
+import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +14,7 @@ import {
   type StatusFilter,
   type VendorListState,
 } from "../list-state";
+import { VendorToolbarActions } from "./vendor-toolbar-actions";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const ALL_CATEGORIES = "__all__";
@@ -31,10 +30,13 @@ interface VendorToolbarProps {
   state: VendorListState;
   categories: string[];
   canCreate: boolean;
+  canImport: boolean;
+  /** Size of the filtered result, to pre-check the export cap. */
+  totalItems: number;
 }
 
 /** Search + filters. They only edit the URL (router.replace); the Server Component re-reads the list. */
-export function VendorToolbar({ state, categories, canCreate }: VendorToolbarProps) {
+export function VendorToolbar({ state, categories, canCreate, canImport, totalItems }: VendorToolbarProps) {
   const router = useRouter();
   const [search, setSearch] = useState(state.q);
   const [seenQ, setSeenQ] = useState(state.q);
@@ -146,12 +148,7 @@ export function VendorToolbar({ state, categories, canCreate }: VendorToolbarPro
         </Select>
       </div>
 
-      {canCreate ? (
-        <Link href="/vendors/new" className={buttonVariants({ className: "ml-auto" })}>
-          <Plus aria-hidden="true" data-icon="inline-start" />
-          Add vendor
-        </Link>
-      ) : null}
+      <VendorToolbarActions state={state} totalItems={totalItems} canCreate={canCreate} canImport={canImport} />
     </div>
   );
 }

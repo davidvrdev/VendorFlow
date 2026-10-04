@@ -22,7 +22,7 @@ test("vendor lifecycle: create, duplicate, edit, requirements, search, deactivat
   // Empty organization.
   await page.goto("/vendors");
   await expect(page.getByRole("heading", { name: "No vendors yet" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Import CSV/ })).toBeDisabled();
+  await expect(page.getByRole("link", { name: /Import CSV/ }).first()).toBeVisible(); // owner can import (Phase 7)
 
   // Create.
   await page.getByRole("link", { name: "Add vendor" }).click();

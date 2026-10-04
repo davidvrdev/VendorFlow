@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { AttentionList } from "@/features/dashboard/components/attention-list";
 import { SummaryTiles } from "@/features/dashboard/components/summary-tiles";
 import { fetchAttention, fetchDashboardSummary } from "@/features/dashboard/server";
@@ -47,9 +47,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
               Add your first vendor
             </Link>
           ) : null}
-          <Button variant="outline" disabled>
-            Import CSV — coming soon
-          </Button>
+          {can(role, "ARCHIVE_AND_IMPORT") ? (
+            <Link href="/vendors/import" className={buttonVariants({ variant: "outline" })}>
+              Import CSV
+            </Link>
+          ) : null}
         </EmptyState>
       ) : (
         <>
