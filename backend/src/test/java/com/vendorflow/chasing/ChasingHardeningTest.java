@@ -48,6 +48,7 @@ class ChasingHardeningTest extends ChasingTestBase {
     @Autowired MeterRegistry meters;
     @Autowired ChasingStore chasingStore;
     @Autowired EmailSuppressionService suppression;
+    @Autowired com.vendorflow.shared.ratelimit.RateLimitProperties rateLimits;
 
     private Object target;
     private ListAppender<ILoggingEvent> logs;
@@ -189,27 +190,27 @@ class ChasingHardeningTest extends ChasingTestBase {
         assertThat(jdbc.queryForList("select email_hash from email_suppression", String.class))
                 .allMatch(h -> h.length() == 64 && !h.contains("@"));
 
-        // The scheduler: another vendor with the same address (same org) is skipped and reported.
         UUID twin = missingVendor(to);
-        clockTo(NY, today(NY).plusDays(30), LocalTime.of(10, 0));
-        ChasingService.RunResult r = run();
-        assertThat(r.chased()).isZero();
-        assertThat(r.skippedSuppressed()).isGreaterThanOrEqualTo(1);
-        assertThat(chaseRows(twin)).isZero();
-
         // Manual document request: 422 for the requester, nothing queued.
         UUID typeId = UUID.fromString(jdbc.queryForObject("select id::text from document_type where organization_id = ?::uuid "
                 + "and code = 'W9'", String.class, org));
         member.client().post("/api/v1/vendors/" + twin + "/document-requests", Map.of("documentTypeId", typeId))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.type").value("https://vendorflow.app/problems/address-unsubscribed"));
+                .andExpect(jsonPath("$.type").value("https://vendorflow.app/problems/address-not-deliverable"));
 
         // Portal link with sendEmail: the link is created, no email is queued, the response says why.
         member.client().post("/api/v1/vendors/" + twin + "/upload-links",
                         Map.of("documentTypeIds", List.of(typeId), "sendEmail", true))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.emailQueued").value(false))
-                .andExpect(jsonPath("$.emailSkippedReason").value("ADDRESS_UNSUBSCRIBED"));
+                .andExpect(jsonPath("$.emailSkippedReason").value("EMAIL_NOT_DELIVERABLE"));
         assertThat(mailsTo(to, NotificationKind.DOCUMENT_REQUEST)).isEmpty();
+
+        // The scheduler: another vendor with the same address (same org) is skipped and reported.
+        clockTo(NY, today(NY).plusDays(30), LocalTime.of(10, 0));
+        ChasingService.RunResult r = run();
+        assertThat(r.chased()).isZero();
+        assertThat(r.skippedSuppressed()).isGreaterThanOrEqualTo(1);
+        assertThat(chaseRows(twin)).isZero();
     }
 
     @Test
@@ -375,14 +376,20 @@ class ChasingHardeningTest extends ChasingTestBase {
 
     @Test
     void oneClickIsRateLimitedAndTheLimitResponseDoesNotEchoTheToken() throws Exception {
-        ApiClient c = new ApiClient(mvc, json).remoteAddr("203.0.113.202");
-        String secret = "C".repeat(43);
-        for (int i = 0; i < 20; i++) {
-            c.perform(HttpMethod.POST, ONE_CLICK + secret, null, false).andExpect(status().isNotFound());
+        // Production default is 500/min (own rule); lowered here so the 429 shape can be checked quickly.
+        Integer original = rateLimits.getLimits().put("chasing-one-click", 3);
+        try {
+            ApiClient c = new ApiClient(mvc, json).remoteAddr("203.0.113.204");
+            String secret = "C".repeat(43);
+            for (int i = 0; i < 3; i++) {
+                c.perform(HttpMethod.POST, ONE_CLICK + secret, null, false).andExpect(status().isNotFound());
+            }
+            c.perform(HttpMethod.POST, ONE_CLICK + secret, null, false).andExpect(status().isTooManyRequests())
+                    .andExpect(jsonPath("$.instance").value(not(containsString(secret))));
+            assertThat(logText()).doesNotContain(secret);
+        } finally {
+            rateLimits.getLimits().put("chasing-one-click", original);
         }
-        c.perform(HttpMethod.POST, ONE_CLICK + secret, null, false).andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.instance").value(not(containsString(secret))));
-        assertThat(logText()).doesNotContain(secret);
     }
 
     // ---- L1: pause / opt-out races ----
@@ -458,6 +465,51 @@ class ChasingHardeningTest extends ChasingTestBase {
     }
 
     @Test
+    void theLockReportsTheCurrentVendorStatusAndEmailSoStaleCandidatesCanBeSkipped() {
+        String original = email("stale");
+        UUID v = missingVendor(original);
+        TransactionTemplate tt = new TransactionTemplate(txManager);
+        ChasingStore.Lock fresh = tt.execute(s -> chasingStore.lockState(orgId, v, java.time.Instant.now()));
+        assertThat(fresh.vendorStatus()).isEqualTo("ACTIVE");
+        assertThat(fresh.vendorEmail()).isEqualTo(original);
+        jdbc.update("update vendor set status = 'INACTIVE', email = ? where id = ?", email("changed"), v);
+        ChasingStore.Lock stale = tt.execute(s -> chasingStore.lockState(orgId, v, java.time.Instant.now()));
+        assertThat(stale.vendorStatus()).isEqualTo("INACTIVE");
+        assertThat(stale.vendorEmail()).isNotEqualTo(original);
+    }
+
+    @Test
+    void aVendorDeactivatedAfterTheCandidateQueryIsNotChased() throws Exception {
+        enableDefaults();
+        String to = email("inactive");
+        UUID v = missingVendor(to);
+        jdbc.update("update vendor set status = 'INACTIVE' where id = ?", v);
+        clockTo(NY, today(NY), LocalTime.of(10, 0));
+        assertThat(run().chased()).isZero();
+        assertThat(chaseRows(v)).isZero();
+    }
+
+    @Test
+    void hardDeletingAVendorWithChasingStateAndLinksDoesNotFail() throws Exception {
+        enableDefaults();
+        UUID v = missingVendor(email("harddelete"));
+        clockTo(NY, today(NY), LocalTime.of(10, 0));
+        assertThat(run().chased()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from vendor_upload_link where vendor_id = ?", Integer.class, v))
+                .isPositive();
+        // Pre-existing: requirements and link types are RESTRICT children of vendor/link, removed by the app's own flows.
+        jdbc.update("delete from vendor_requirement where vendor_id = ?", v);
+        jdbc.update("delete from vendor_upload_link_type where link_id in (select id from vendor_upload_link where vendor_id = ?)", v);
+        // V11 keeps links RESTRICT on the vendor, so they go first; the chasing FKs (SET NULL) must not block that.
+        assertThat(jdbc.update("delete from vendor_upload_link where vendor_id = ?", v)).isPositive();
+        assertThat(jdbc.queryForObject("select count(*) from vendor_chase where vendor_id = ? and link_id is null",
+                Integer.class, v)).isEqualTo(1);
+        assertThat(jdbc.update("delete from vendor where id = ?", v)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from vendor_chasing where vendor_id = ?", Integer.class, v)).isZero();
+        assertThat(chaseRows(v)).isZero();
+    }
+
+    @Test
     void theUniqueAddressDayIndexRefusesASecondChaseOfTheSameAddressWhateverTheOrganization() {
         UUID a = missingVendor(email("uq-a"));
         UUID b = fx.vendor(otherOrg, "Other vendor " + UUID.randomUUID());
@@ -493,8 +545,9 @@ class ChasingHardeningTest extends ChasingTestBase {
         assertThat(r.chased()).isZero();
         assertThat(chaseRows(v)).isZero();
         // 21 hours later it is allowed again.
-        clock.advance(Duration.ofHours(16));
-        jdbc.update("update vendor_chasing set last_chased_local_date = ? where vendor_id = ?", today(NY).minusDays(20), v);
+        // (the clock stays at the send hour: moving it forward would pass midnight, before sendHour)
+        jdbc.update("update vendor_chasing set last_chased_at = ? where vendor_id = ?",
+                java.sql.Timestamp.from(clock.instant().minus(Duration.ofHours(21))), v);
         assertThat(run().chased()).isEqualTo(1);
     }
 }

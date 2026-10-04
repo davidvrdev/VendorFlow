@@ -101,9 +101,10 @@ public class DocumentRequestService {
                     "Add an email address to the vendor first.");
         }
         if (suppression.isSuppressed(recipient)) {
-            // The address unsubscribed from VendorFlow emails (any organization): reported to the requester, nothing queued.
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "address-unsubscribed", "Address unsubscribed",
-                    "This vendor address unsubscribed from VendorFlow emails. Contact the vendor another way.");
+            // Suppression is global (any organization): the cause is deliberately not revealed, or a tenant could probe
+            // whether an address unsubscribed from another tenant's chases. Nothing is queued.
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "address-not-deliverable", "Address cannot receive email",
+                    "This address can't receive emails from VendorFlow. Contact the vendor another way.");
         }
         UserAccountService.UserSummary requester = users.require(tenant.userId());
         String zone = organizations.complianceSettings(orgId).timeZone();

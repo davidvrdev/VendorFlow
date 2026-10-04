@@ -670,7 +670,7 @@ Vendors upload through a link; no vendor account. Staff create and revoke links;
 **Staff endpoints** (session + CSRF as usual; tenant from the session; a vendor/link of another organization is 404):
 - `POST /vendors/{vendorId}/upload-links` — `CONTENT_WRITE` (MEMBER+; VIEWER 403). Body
   `{ documentTypeIds: uuid[1..20], expiresInDays?: 1..30 (default 14), maxUploads?: 1..50 (default 20), maxTotalMb?: 1..500 (default 100; total bytes the link may upload), sendEmail?: boolean (default false) }` → **201**
-  `{ link: UploadLink, url: string, emailQueued: boolean, emailSkippedReason: "ADDRESS_UNSUBSCRIBED"|null }`. `url` = `{APP_BASE_URL}/portal#token=<raw token>` and is the ONLY time the raw token is ever returned
+  `{ link: UploadLink, url: string, emailQueued: boolean, emailSkippedReason: "EMAIL_NOT_DELIVERABLE"|null }`. `url` = `{APP_BASE_URL}/portal#token=<raw token>` and is the ONLY time the raw token is ever returned
   (response is `no-store`; it is not stored, audited or logged; lost link = create a new one). Rules: every id must be an ACTIVE document type that is a requirement of this vendor, else 400
   `errors[].field = documentTypeIds`; vendor must be ACTIVE (422 `vendor-inactive`); `sendEmail=true` needs a vendor email (422 `vendor-no-email`) and queues the existing `DOCUMENT_REQUEST` email with the portal link
   (idempotency key `portallink:{linkId}`). Rate limit `portal-link-create-user` 30/min per user. Audit `portal_link.created` (entity `vendor_upload_link`; metadata vendorId, documentTypeIds, expiresAt, maxUploads, emailed; never the token).
@@ -743,7 +743,7 @@ Public opt-out (no session, no cookies read; the token is in header `X-Portal-To
 | GET | `/api/v1/portal/chasing/opt-out` | NEVER changes state. 200 `{ organizationName, vendorName, optedOut: bool }` |
 | POST | `/api/v1/portal/chasing/opt-out` (no body) | Pauses chasing for the vendor (`pausedReason = OPT_OUT`), notifies staff once, audits `vendor.chasing.opted_out`. 200 `{ organizationName, vendorName, optedOut: true }`; a repeat is the same 200 with no second audit row or notice |
 
-RFC 8058 one-click target of the `List-Unsubscribe` header (token in the PATH, because a header can only carry a URL; same rate rule, same identical 404, `no-store`):
+RFC 8058 one-click target of the `List-Unsubscribe` header (token in the PATH, because a header can only carry a URL; own per-IP rule `chasing-one-click` 500/min (mail providers share IPs; header-token GET/POST keep 20/min), same identical 404, `no-store`):
 
 | Method | Path | Behavior |
 |---|---|---|

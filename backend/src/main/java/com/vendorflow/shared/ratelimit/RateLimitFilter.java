@@ -57,8 +57,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Map<Pattern, String> PATTERN_RULES = Map.of(
             Pattern.compile("/api/v1/vendors/[^/]+/documents"), "document-upload",
             Pattern.compile("/api/v1/portal/link/documents"), "portal-upload",
-            // RFC 8058 one-click unsubscribe (token in the path): shares the opt-out budget (ADR-0012).
-            Pattern.compile("/api/v1/portal/chasing/one-click/[^/]+"), "chasing-opt-out");
+            // RFC 8058 one-click unsubscribe (token in the path): own generous budget: mail-provider scanners/clients
+            // POST from shared IPs (ADR-0012).
+            Pattern.compile("/api/v1/portal/chasing/one-click/[^/]+"), "chasing-one-click");
 
     /** GET/HEAD paths with a variable segment: the public portal view (HEAD is routed to the GET handler). */
     private static final Map<Pattern, String> READ_PATTERN_RULES = Map.of(

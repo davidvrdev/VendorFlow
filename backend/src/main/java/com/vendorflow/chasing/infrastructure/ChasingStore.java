@@ -148,15 +148,34 @@ public class ChasingStore {
      * row) waits for this transaction and, once it has committed, cancels the email this transaction enqueued; one that
      * committed earlier is seen here. Creating the row first closes the "no row yet" gap.
      *
-     * @return true when the vendor is paused or opted out and must not be chased
+     * <p>The same statement then takes a {@code FOR SHARE} lock on the vendor row and returns its status and email, so the
+     * caller can skip a vendor that was archived or whose address changed since the candidate query.
+     *
+     * @return the paused flag plus the vendor's current status and email (empty vendor = deleted meanwhile)
      */
-    public boolean lockStateIsPaused(UUID organizationId, UUID vendorId, Instant now) {
+    public Lock lockState(UUID organizationId, UUID vendorId, Instant now) {
         return jdbc.sql("""
-                insert into vendor_chasing (vendor_id, organization_id, updated_at) values (:vendorId, :organizationId, :now)
-                on conflict (vendor_id) do update set updated_at = vendor_chasing.updated_at
-                returning paused""")
+                with s as (
+                  insert into vendor_chasing (vendor_id, organization_id, updated_at) values (:vendorId, :organizationId, :now)
+                  on conflict (vendor_id) do update set updated_at = vendor_chasing.updated_at
+                  returning paused)
+                select s.paused, v.status, v.email from s
+                join vendor v on v.organization_id = :organizationId and v.id = :vendorId
+                for share of v""")
                 .param("vendorId", vendorId).param("organizationId", organizationId).param("now", utc(now))
-                .query(Boolean.class).single();
+                .query((rs, i) -> new Lock(rs.getBoolean("paused"), rs.getString("status"), rs.getString("email")))
+                .optional().orElse(new Lock(false, null, null));
+    }
+
+    public record Lock(boolean paused, String vendorStatus, String vendorEmail) {
+        public boolean paused() {
+            return paused;
+        }
+    }
+
+    /** Kept for callers that only need the paused flag. */
+    public boolean lockStateIsPaused(UUID organizationId, UUID vendorId, Instant now) {
+        return lockState(organizationId, vendorId, now).paused();
     }
 
     /**
@@ -170,7 +189,7 @@ public class ChasingStore {
             return java.util.Set.of();
         }
         return java.util.Set.copyOf(jdbc.sql("""
-                select distinct recipient_hash from vendor_chase where recipient_hash in (:h) and created_at >= :since""")
+                select distinct recipient_hash from vendor_chase where recipient_hash in (:h) and created_at > :since""")
                 .param("h", recipientHashes).param("since", utc(since)).query(String.class).list());
     }
 
@@ -182,7 +201,7 @@ public class ChasingStore {
                                           opt_out_token_hash, opt_out_expires_at, recipient_hash, created_at)
                 values (:id, :organizationId, :vendorId, :localDate, :attempt, cast(:types as jsonb), :linkId,
                         :hash, :expires, :recipientHash, :now)
-                on conflict (vendor_id, local_date) do nothing""")
+                on conflict do nothing""")
                 .param("id", chaseId).param("organizationId", organizationId).param("vendorId", vendorId)
                 .param("localDate", localDate).param("attempt", attempt).param("types", typesJson)
                 .param("linkId", linkId).param("hash", optOutHash).param("recipientHash", recipientHash).param("expires", utc(optOutExpiresAt))

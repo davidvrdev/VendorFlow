@@ -18,6 +18,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
   organization settings, audit events, transactional email outbox. UI for all of it. Full-stack E2E suite
   (13 flows) using an e2e-profile test mailbox.
 
+- **Phase 15 — Automated chasing**: opt-in org settings (cadence, attempts, lead days, send hour), hourly scheduler
+  with advisory-lock exclusion and per-vendor isolation, idempotent ledger, one chase per recipient per 20 h across
+  orgs, per-org daily cap, fresh portal link per chase, opt-out page + RFC 8058 one-click unsubscribe, global email
+  suppression, CAN-SPAM footer (postal address required), vendor follow-up card + history UI. ADR-0012.
+
 - **Phase 14 — Vendor portal**: tokenized upload links (no vendor account; token in `X-Portal-Token`, hashed at rest,
   oracle-free 404), staff create/list/revoke + email, public `/portal` page (fragment token stripped), same upload
   pipeline (ClamAV, quota), portal uploads over an approved document become CANDIDATEs that never displace it until

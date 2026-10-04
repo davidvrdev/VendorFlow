@@ -116,6 +116,8 @@ app:
       portal-link-create-user: 30
       # Public vendor unsubscribe (ADR-0012): GET + POST /api/v1/portal/chasing/opt-out, shared per-IP budget
       chasing-opt-out: 20
+      # RFC 8058 one-click POST /api/v1/portal/chasing/one-click/{token}: own per-IP budget (mail providers share IPs)
+      chasing-one-click: 500
   documents:
     # Max size of one uploaded document (our own check, before the multipart limits above).
     max-size: 15MB

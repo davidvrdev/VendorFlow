@@ -90,7 +90,16 @@ public class OutboxDispatcher {
     }
 
     private void process(Notification n, Instant now) {
-        String blocked = blockReason(n);
+        String blocked;
+        try {
+            blocked = blockReason(n);
+        } catch (RuntimeException e) {
+            // One misbehaving guard must not abort the batch transaction (and re-poison every later row): fail this row only.
+            n.markFailed(sanitize(e), now);
+            log.warn("Delivery guard failed: id={} kind={} attempts={} status={}", n.getId(), n.getKind(),
+                    n.getAttempts(), n.getStatus());
+            return;
+        }
         if (blocked != null) {
             // Backstop: the vendor paused/unsubscribed after the row was enqueued. Never sent; secrets are scrubbed.
             n.markDead(blocked, now);

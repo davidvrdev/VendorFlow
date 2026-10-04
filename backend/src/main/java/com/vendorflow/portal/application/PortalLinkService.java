@@ -152,7 +152,7 @@ public class PortalLinkService {
         metadata.put("maxTotalBytes", maxTotalBytes);
         metadata.put("emailed", emailQueued);
         if (emailSuppressed) {
-            metadata.put("emailSkipped", "ADDRESS_UNSUBSCRIBED");
+            metadata.put("emailSkipped", "EMAIL_NOT_DELIVERABLE");
         }
         audit.record("portal_link.created", ENTITY_TYPE, id, metadata);
 
@@ -178,7 +178,7 @@ public class PortalLinkService {
         log.info("Portal link created: id={} org={} vendor={} emailed={}", id, orgId, vendorId, emailQueued);
         return new CreatedUploadLink(view(link, types.stream().map(t -> new UploadLinkView.TypeRef(t.id(), t.name()))
                 .toList(), tenant.userId()), baseUrl + "/portal#token=" + token, emailQueued,
-                emailSuppressed ? "ADDRESS_UNSUBSCRIBED" : null);
+                emailSuppressed ? "EMAIL_NOT_DELIVERABLE" : null);
     }
 
     /** A link issued by the system (automated chasing): the raw token is returned ONCE to the caller, never stored. */

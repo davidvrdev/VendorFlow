@@ -79,7 +79,7 @@ public class ChasingService {
     /** Belt and braces on top of the local-date cadence (a time zone change must not double-chase a vendor). */
     static final Duration MIN_SPACING = Duration.ofHours(20);
     /** Per recipient, across organizations. */
-    static final Duration RECIPIENT_CAP_WINDOW = Duration.ofHours(24);
+    static final Duration RECIPIENT_CAP_WINDOW = Duration.ofHours(20);
     /** Counter name of vendors that failed while being chased (alert on it, docs/RUNBOOKS.md). */
     public static final String FAILURE_METRIC = "vendorflow.chasing.vendor.failures";
     /** Stable log message of a failed vendor (alert on it, docs/RUNBOOKS.md). */
@@ -392,8 +392,15 @@ public class ChasingService {
 
     private void chaseVendor(Ctx ctx, Candidate c, Tally t, List<UUID> superseded) {
         // L1: the state may have changed since phase 1. The row lock also makes a concurrent pause/opt-out wait.
-        if (store.lockStateIsPaused(ctx.organizationId(), c.vendorId(), ctx.now())) {
+        ChasingStore.Lock lock = store.lockState(ctx.organizationId(), c.vendorId(), ctx.now());
+        if (lock.paused()) {
             t.skippedPaused++;
+            return;
+        }
+        // The vendor row is now share-locked: archived/deleted or re-addressed since phase 1 means this candidate is stale
+        // (the next tick re-evaluates it with the fresh data).
+        if (!"ACTIVE".equals(lock.vendorStatus()) || lock.vendorEmail() == null
+                || !EmailSuppressionService.hash(lock.vendorEmail()).equals(EmailSuppressionService.hash(c.email()))) {
             return;
         }
         // Suppression and the cross-organization cap were checked in bulk in phase 1; a suppression that lands after that is

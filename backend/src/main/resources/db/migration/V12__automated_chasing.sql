@@ -33,7 +33,7 @@ CREATE TABLE vendor_chasing (
     CONSTRAINT vendor_chasing_vendor_fk FOREIGN KEY (organization_id, vendor_id)
         REFERENCES vendor (organization_id, id) ON DELETE CASCADE,
     CONSTRAINT vendor_chasing_link_fk FOREIGN KEY (organization_id, last_link_id)
-        REFERENCES vendor_upload_link (organization_id, id) ON DELETE RESTRICT
+        REFERENCES vendor_upload_link (organization_id, id) ON DELETE SET NULL (last_link_id)
 );
 CREATE INDEX vendor_chasing_org_idx ON vendor_chasing (organization_id);
 
@@ -46,7 +46,8 @@ CREATE TABLE vendor_chase (
     local_date          date        NOT NULL,
     attempt             int         NOT NULL CHECK (attempt >= 1),
     types               jsonb       NOT NULL,
-    link_id             uuid        NOT NULL,
+    -- Nullable: a hard delete of the link (or of its vendor, which cascades to both) must not be blocked by the ledger.
+    link_id             uuid,
     -- Hex SHA-256 of the 256-bit opt-out token carried by this chase's email; the raw token is never stored.
     opt_out_token_hash  text        NOT NULL CHECK (char_length(opt_out_token_hash) = 64),
     opt_out_expires_at  timestamptz NOT NULL,
@@ -61,7 +62,7 @@ CREATE TABLE vendor_chase (
         REFERENCES vendor (organization_id, id) ON DELETE CASCADE,
     -- Deferred: the ledger row is inserted first (idempotency claim), the link right after in the same transaction.
     CONSTRAINT vendor_chase_link_fk FOREIGN KEY (organization_id, link_id)
-        REFERENCES vendor_upload_link (organization_id, id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
+        REFERENCES vendor_upload_link (organization_id, id) ON DELETE SET NULL (link_id) DEFERRABLE INITIALLY DEFERRED
 );
 CREATE INDEX vendor_chase_vendor_idx ON vendor_chase (organization_id, vendor_id, created_at DESC);
 CREATE INDEX vendor_chase_recipient_idx ON vendor_chase (recipient_hash, created_at);

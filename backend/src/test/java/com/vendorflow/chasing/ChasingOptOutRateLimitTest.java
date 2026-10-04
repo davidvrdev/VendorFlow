@@ -21,4 +21,14 @@ class ChasingOptOutRateLimitTest extends ChasingTestBase {
         c.perform(HttpMethod.POST, "/api/v1/portal/chasing/opt-out", null, false)
                 .andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After"));
     }
+
+    @Test
+    void oneClickHasItsOwnGenerousBudget() throws Exception {
+        ApiClient c = new ApiClient(mvc, json).remoteAddr("203.0.113.202");
+        for (int i = 0; i < 21; i++) {
+            int s = c.perform(HttpMethod.POST, "/api/v1/portal/chasing/one-click/unknown-" + i, null, false)
+                    .andReturn().getResponse().getStatus();
+            assertThat(s).isNotEqualTo(429);
+        }
+    }
 }
