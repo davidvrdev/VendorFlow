@@ -33,6 +33,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
 - **Phase 6 — Notifications**: Resend email delivery (pending owner API key + verified domain), automatic expiry
   reminders at configurable thresholds with a daily digest to owners/admins, "Request from vendor" emails, email
   activity log.
+- **Phase 7 — CSV**: export vendors (with current filters and compliance columns, Excel-friendly, formula-injection
+  safe) and import vendors in two steps — a per-row preview (create / update / unchanged / errors) and an all-or-nothing
+  commit that never erases existing data.
 
 ### Security
 - Phase 1 security review findings fixed: trusted-proxy client IP resolution, rate-limit path normalization,
@@ -40,3 +43,5 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
   account email throttle, token scrubbing for undelivered emails, email redaction in stored errors.
 - Phase 3 upload security review findings fixed: per-organization storage quota, per-user upload rate limit,
   CSRF token accepted only from the request header, HEAD download not audited, startup warning without malware scanner.
+- Phase 7 CSV security review findings fixed: header/column and cell-size caps, bounded error echo, per-user export
+  rate limit, vendor row locks during import commit, re-validation of stored preview rows, stored rows cleared on commit.
