@@ -115,7 +115,7 @@ jobs:
       - name: Start backend (profiles local,e2e)
         working-directory: backend
         run: |
-          nohup java -jar target/*-SNAPSHOT.jar --spring.profiles.active=local,e2e > ../backend.log 2>&1 &
+          nohup java -jar target/vendorflow-api.jar --spring.profiles.active=local,e2e > ../backend.log 2>&1 &
           for i in $(seq 1 90); do
             curl -fs http://localhost:8080/actuator/health >/dev/null 2>&1 && exit 0
             sleep 2
