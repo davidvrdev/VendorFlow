@@ -17,6 +17,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
   organization settings, audit events, transactional email outbox. UI for all of it. Full-stack E2E suite
   (13 flows) using an e2e-profile test mailbox.
 
+- **Phase 8 — Billing**: per-organization subscription (14-day trial), Stripe Checkout + Customer Portal,
+  signed idempotent webhooks (re-fetch from Stripe, converge out of order), read-only mode (402) when inactive,
+  prod fail-closed config guard, billing settings page and app-wide subscription banner. Verified live against
+  Stripe test mode (checkout session, webhook → ACTIVE, cancel → CANCELED, portal, 402 on write).
+
 - **Phase 2 — Vendors**: per-organization document types (8 defaults; COI, Workers' Comp and W-9 required by
   default), vendor create/edit/deactivate/reactivate, per-vendor required documents, list with search, filters,
   sorting and pagination, vendor history. Full-stack E2E vendor lifecycle.

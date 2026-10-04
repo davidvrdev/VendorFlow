@@ -45,6 +45,7 @@ class ProfileGuardTest {
         env.setProperty("app.security.session-cookie-secure", "true");
         env.setProperty("app.base-url", "https://app.vendorflow.example");
         env.setProperty("app.email.provider", "resend");
+        env.setProperty("vendorflow.billing.allow-disabled-in-prod", "true");
         return env;
     }
 
@@ -138,6 +139,7 @@ class ProfileGuardTest {
         fresh.setProperty("app.security.ip-hash-secret", STRONG_SECRET);
         fresh.setProperty("app.base-url", "https://app.example.com");
         fresh.setProperty("app.email.provider", "resend");
+        fresh.setProperty("vendorflow.billing.allow-disabled-in-prod", "true");
         assertThatCode(() -> new ProfileGuard(fresh, jdbc(null))).doesNotThrowAnyException();
     }
 

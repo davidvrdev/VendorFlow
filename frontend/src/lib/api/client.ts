@@ -3,6 +3,8 @@ import { toApiPath } from "./path";
 
 const CSRF_COOKIE = "XSRF-TOKEN";
 export const CSRF_HEADER = "X-XSRF-TOKEN";
+/** Fired (browser only) when any request gets 402; the subscription provider listens. */
+export const SUBSCRIPTION_INACTIVE_EVENT = "vendorflow:subscription-inactive";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export type ApiRequestInit = Omit<RequestInit, "body"> & {
@@ -96,7 +98,10 @@ export async function apiFetch<T = void>(path: string, init: ApiRequestInit = {}
     body: hasJsonBody ? JSON.stringify(json) : body,
   });
 
-  if (!response.ok) throw await ApiError.fromResponse(response);
+  if (!response.ok) {
+    if (response.status === 402 && typeof window !== "undefined") window.dispatchEvent(new Event(SUBSCRIPTION_INACTIVE_EVENT));
+    throw await ApiError.fromResponse(response);
+  }
   if (response.status === 204 || response.status === 205) return undefined as T;
 
   const text = await response.text();

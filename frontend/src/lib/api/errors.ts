@@ -82,6 +82,7 @@ function parseFieldErrors(value: unknown): FieldError[] | undefined {
 function genericTitle(status: number): string {
   if (status === 401) return "You need to sign in to continue.";
   if (status === 403) return "You do not have permission to do that.";
+  if (status === 402) return "Your subscription is inactive. Subscribe to make changes.";
   if (status === 404) return "We could not find what you were looking for.";
   if (status === 429) return "Too many requests. Please wait a moment and try again.";
   if (status >= 500) return "Something went wrong on our side. Please try again.";

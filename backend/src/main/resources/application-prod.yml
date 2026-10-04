@@ -12,3 +12,8 @@ logging:
   structured:
     format:
       console: ecs
+
+vendorflow:
+  billing:
+    # Fail closed: forgetting BILLING_ENABLED means billing ON, which requires the keys below (ProfileGuard).
+    enabled: ${BILLING_ENABLED:true}

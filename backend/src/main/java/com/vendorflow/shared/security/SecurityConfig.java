@@ -2,6 +2,7 @@ package com.vendorflow.shared.security;
 
 import com.vendorflow.shared.error.Problems;
 import java.util.Map;
+import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,7 +52,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/csrf", "/api/v1/auth/signup", "/api/v1/auth/login",
                                 "/api/v1/auth/logout", "/api/v1/auth/verify-email",
                                 "/api/v1/auth/password-reset/**").permitAll()
-                        .requestMatchers("/api/v1/invitations/lookup", "/api/v1/invitations/accept").permitAll();
+                        .requestMatchers("/api/v1/invitations/lookup", "/api/v1/invitations/accept").permitAll()
+                        // Stripe webhook: no session; authenticity = signature over the raw body (billing feature).
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll();
                     // E2E-only test mailbox: public only under profile e2e (ProfileGuard forbids e2e + prod).
                     if (e2e) {
                         auth.requestMatchers("/api/test/mailbox").permitAll();
@@ -59,6 +62,7 @@ public class SecurityConfig {
                     auth.anyRequest().authenticated();
                 })
                 .csrf(csrf -> csrf
+                        .ignoringRequestMatchers("/api/v1/webhooks/stripe")
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new HeaderOnlyCsrfTokenRequestHandler()))
                 .securityContext(sc -> sc.securityContextRepository(securityContextRepository))

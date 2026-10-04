@@ -3,8 +3,8 @@
 _Last updated: 2026-10-04 (session 2)_
 
 ## Current Status
-Phases 0–7 ☑ **done** (Foundation, Auth & Organizations, Vendors, Documents, Compliance, Dashboard, Notifications,
-CSV). **Work paused by the owner after Phase 7 (2026-10-04)** — do not start Phase 8 (Billing) until they say so.
+Phases 0–8 ☑ **done** (… CSV, Billing). Owner authorized all remaining phases on 2026-10-04 (session 3); work
+continues phase by phase, stopping only on owner-only blockers.
 Users can manage organizations/members, vendors, required document types, upload/review/archive/download vendor
 documents, see derived compliance, work from a prioritized dashboard, request documents from vendors by email, receive
 a daily digest (real delivery pending the owner's Resend key + domain), and export/import vendors as CSV.
@@ -34,11 +34,14 @@ Stripe test-mode keys, pricing and plan limits (DECISIONS.md § Pending).
   validation → atomic commit with re-validation, import + vendor row locks, stored rows cleared after commit);
   Apache Commons CSV; import wizard UI; security review + fixes (header/cell caps, export rate limit, locks).
 
+- Phase 8: subscriptions (14-day trial, Standard 49 EUR/month), Stripe Checkout/Portal, signed idempotent webhooks,
+  402 read-only mode, prod fail-closed guard; billing page + banner; security review fixed (M1, L2–L5); verified live
+  in Stripe test mode with the Stripe CLI forwarding webhooks.
+
 ## In Progress
-- Nothing. Paused after Phase 7 at the owner's request.
+- Phase 9 — Security hardening.
 
 ## Blocked
-- Phase 8 needs owner input: Stripe test keys, pricing and plan limits.
 - CI has never run (no git remote) — owner must create the GitHub repo and push.
 
 ## Next

@@ -1,5 +1,6 @@
 package com.vendorflow.reminder;
 
+import com.vendorflow.billing.application.SubscriptionService;
 import com.vendorflow.compliance.application.ComplianceContext;
 import com.vendorflow.compliance.application.ComplianceContextService;
 import com.vendorflow.compliance.infrastructure.RequirementStatusSql;
@@ -70,10 +71,13 @@ public class ReminderService {
     private final ComplianceContextService contexts;
     private final OrganizationService organizations;
     private final OutboxService outbox;
+    private final SubscriptionService subscriptions;
     private final Clock clock;
 
     public ReminderService(JdbcClient jdbc, PlatformTransactionManager transactionManager,
-            ComplianceContextService contexts, OrganizationService organizations, OutboxService outbox, Clock clock) {
+            ComplianceContextService contexts, OrganizationService organizations, OutboxService outbox, SubscriptionService subscriptions,
+            Clock clock) {
+        this.subscriptions = subscriptions;
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactionManager);
         this.contexts = contexts;
@@ -87,6 +91,11 @@ public class ReminderService {
         List<UUID> orgs = jdbc.sql("select id from organization where reminders_enabled").query(UUID.class).list();
         int ran = 0;
         for (UUID orgId : orgs) {
+            // A lapsed subscription (read-only) gets no reminders or digests: they are part of the paid service and
+            // would otherwise cost email for nothing. They resume as soon as the subscription is active again.
+            if (subscriptions.isReadOnly(orgId)) {
+                continue;
+            }
             try {
                 if (runOrganization(orgId, false).ran()) {
                     ran++;

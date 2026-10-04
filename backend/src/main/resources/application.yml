@@ -122,3 +122,17 @@ app:
     # Scheduled expiry-reminder + digest job (every 15 min; per org once per org-local day after 07:00).
     enabled: true
     fixed-delay-ms: 900000
+
+vendorflow:
+  billing:
+    # Off by default: no read-only enforcement and no Stripe calls (local/test). Prod defaults to ON (application-prod.yml)
+    # and then refuses to start without the Stripe keys (ProfileGuard).
+    enabled: ${BILLING_ENABLED:false}
+    # Length of the free trial of NEW organizations (the V8 backfill of existing ones is fixed at 14 days).
+    trial-days: 14
+    plan-key: standard
+    stripe:
+      secret-key: ${STRIPE_SECRET_KEY:}
+      webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+      # Price of the single "standard" plan. Pricing/limits are an open owner decision (docs/DECISIONS.md, Pending).
+      price-id: ${STRIPE_PRICE_ID:}

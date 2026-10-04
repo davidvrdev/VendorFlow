@@ -230,3 +230,13 @@ Creates `document` as specified above plus: `size_bytes>0`, `issue_date<=expirat
   `UNIQUE (organization_id, id)` (tenant-scoped lookups; ready for composite FKs). Index `vendor_import_expires_idx (expires_at)` serves the purge.
 - Commit locks the row (`SELECT ... FOR UPDATE`, `VendorImportRepository.findForUpdate`) so concurrent commits of one import serialize; `rows` is replaced by `[]` when committed.
 - Retention: rows contain vendor contact data; purge = `expires_at < now - 24 h` on every new preview and hourly (`VendorImportService.purgeExpiredPreviews`).
+
+## 7. Implementation notes (V8, Phase 8 billing)
+- `V8__billing.sql` creates `subscription` and `stripe_event` as described above. Differences/additions: `subscription.organization_id` is `UNIQUE REFERENCES organization ON DELETE CASCADE`,
+  `plan NOT NULL DEFAULT 'standard'`, `cancel_at_period_end NOT NULL DEFAULT false`; `stripe_event.processed_at` is NULL while the row is FAILED; `stripe_event.error` holds an exception class name only.
+- Backfill: every organization existing at V8 gets a TRIALING row with `trial_ends_at = now() + 14 days` (fixed 14 days; `vendorflow.billing.trial-days` applies to new organizations).
+  New organizations get their row from `SubscriptionService` listening to `OrganizationCreatedEvent` in the signup transaction.
+- `stripe_event` claim statement (insert-first idempotency, same transaction as the state change):
+  `INSERT ... (status 'PROCESSED') ON CONFLICT (id) DO UPDATE ... WHERE stripe_event.status = 'FAILED'`; 0 rows affected = already processed. A failed attempt rolls the claim back and is
+  recorded as FAILED in a separate transaction, so Stripe's retry reprocesses it.
+- `subscription` is not a tenant-scoped lookup table in the webhook path: it is found by `stripe_customer_id` (UNIQUE) with `FOR UPDATE`, because no session/organization exists there.

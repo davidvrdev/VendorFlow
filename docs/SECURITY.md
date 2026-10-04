@@ -25,6 +25,7 @@ escalating inside their org; malicious file uploader; forged webhook sender; com
 | Malicious PDFs | We never parse/render PDFs server-side in the MVP (only magic-byte check). Browser downloads as attachment. Future AI extraction runs in an isolated worker (Phase 13) |
 | SSRF | Backend makes outbound calls only to fixed configured hosts (Stripe, Resend, storage). No user-supplied URLs are fetched |
 | Webhook forgery / replay | Stripe signature verification with tolerance window (SDK `Webhook.constructEvent`); event id stored (PK) → replays are no-ops; state changes derive from re-fetched Stripe objects where ordering matters |
+| Webhook endpoint flooding (L1) | `/api/v1/webhooks/stripe` is unauthenticated and rate-limited per IP (`stripe-webhook`, 600/min) with a 256 KiB body cap. Stripe sends from a small IP set, so a flood from those IPs could consume the budget and delay legitimate deliveries; Stripe retries with backoff, so this degrades timeliness, not correctness. Rejections log one WARN with the reason class only (signature mismatch / stale timestamp / malformed). Prod startup refuses disabled billing and non-live Stripe keys without explicit opt-in (`allow-disabled-in-prod`, `allow-test-keys-in-prod`) |
 | Error disclosure | RFC 9457 ProblemDetail with generic messages; stack traces only in server logs; `server.error.include-*=never` |
 | Insecure CORS | Production: no CORS (same-origin via Next.js rewrite). Dev: explicit allowlist `http://localhost:3000` only |
 | Secrets leakage | Secrets only via environment variables; `.env*` gitignored; `.env.example` has placeholders; logs never include secrets/tokens/passwords/file contents |
@@ -94,7 +95,7 @@ Enforcement happens in application services via `AuthorizationService.require(Pe
 ## 7. Secrets and startup safety
 - `ProfileGuard` (fails the boot): `e2e`+`prod`; with `prod`: dev or short (<32) ip-hash secret, `session-cookie-secure=false`, non-https `app.base-url`, **`app.email.provider` other than `resend`** (EMAIL_PROVIDER unset = logging = a production app that silently sends nothing; the sender itself also refuses to start without `RESEND_API_KEY` / `EMAIL_FROM`); WITHOUT `prod`: a database host that is not localhost/127.0.0.1/[::1]/host.docker.internal unless `app.allow-non-local-db-without-prod=true` (a forgotten `SPRING_PROFILES_ACTIVE=prod` must not run production data with local settings; `application-test.yml` sets the opt-in because Testcontainers may use a remote Docker host).
 - Supplied via environment variables (see `.env.example`). Local dev uses `.env` files that are gitignored.
-- Required in prod: `DATABASE_URL/USER/PASSWORD`, `APP_BASE_URL` (https), optional `TRUSTED_PROXIES_REGEX`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
+- Required in prod: `DATABASE_URL/USER/PASSWORD`, `APP_BASE_URL` (https), optional `TRUSTED_PROXIES_REGEX`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` (all three required while `BILLING_ENABLED` is true, which is the prod default; `ProfileGuard` refuses to boot otherwise), `RESEND_API_KEY`,
   `STORAGE_S3_*`, `APP_IP_HASH_SECRET` (>= 32 chars, not a dev value). Rotation procedure: `docs/runbooks/secret-rotation.md` (Phase 11).
 
 ## 8. Residual risks (accepted)

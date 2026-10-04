@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { UserMenu } from "@/features/auth/components/user-menu";
+import { SubscriptionBanner } from "@/features/billing/components/subscription-banner";
+import { SubscriptionProvider } from "@/features/billing/components/subscription-provider";
+import type { Subscription } from "@/features/billing/schemas";
 import { VerifyEmailBanner } from "@/features/auth/components/verify-email-banner";
 import type { Me } from "@/features/auth/types";
 import type { OrganizationRef } from "@/features/organization/types";
@@ -25,14 +28,16 @@ function isActive(pathname: string, href: string) {
 interface AppShellProps {
   me: Me;
   activeOrganization: OrganizationRef;
+  subscription?: Subscription | null;
   children: ReactNode;
 }
 
-export function AppShell({ me, activeOrganization, children }: AppShellProps) {
+export function AppShell({ me, activeOrganization, subscription = null, children }: AppShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
+    <SubscriptionProvider initial={subscription}>
     <div className="flex min-h-full flex-1 flex-col md:flex-row">
       <aside className="border-b bg-sidebar text-sidebar-foreground md:w-60 md:shrink-0 md:border-r md:border-b-0">
         <div className="flex h-14 items-center justify-between px-4">
@@ -82,10 +87,12 @@ export function AppShell({ me, activeOrganization, children }: AppShellProps) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         {me.user.emailVerified ? null : <VerifyEmailBanner />}
+        <SubscriptionBanner />
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-8 outline-none sm:px-8">
           {children}
         </main>
       </div>
     </div>
+    </SubscriptionProvider>
   );
 }

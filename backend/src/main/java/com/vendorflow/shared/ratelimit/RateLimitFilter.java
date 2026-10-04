@@ -44,7 +44,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
             "/api/v1/auth/password-reset/request", "password-reset-request",
             "/api/v1/invitations/lookup", "invitation",
             "/api/v1/invitations/accept", "invitation",
-            "/api/v1/auth/resend-verification", "resend-verification");
+            "/api/v1/auth/resend-verification", "resend-verification",
+            "/api/v1/webhooks/stripe", "stripe-webhook");
 
     /** POST paths with a variable segment (normalized, lower case): pattern -> rule name. */
     private static final Map<Pattern, String> PATTERN_RULES = Map.of(

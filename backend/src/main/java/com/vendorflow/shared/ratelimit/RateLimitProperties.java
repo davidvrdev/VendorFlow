@@ -16,17 +16,18 @@ public class RateLimitProperties {
 
     private boolean enabled = true;
     private Duration window = Duration.ofMinutes(1);
-    private Map<String, Integer> limits = new LinkedHashMap<>(Map.of(
-            "login", 10,
-            "signup", 5,
-            "password-reset-request", 5,
-            "invitation", 20,
-            "resend-verification", 3,
-            "document-upload", 30,
-            "document-upload-user", 30,
-            "document-request-user", 30,
-            "vendor-import-preview-user", 10,
-            "vendor-export-user", 10));
+    private Map<String, Integer> limits = new LinkedHashMap<>(Map.ofEntries(
+            Map.entry("login", 10),
+            Map.entry("signup", 5),
+            Map.entry("password-reset-request", 5),
+            Map.entry("invitation", 20),
+            Map.entry("resend-verification", 3),
+            Map.entry("document-upload", 30),
+            Map.entry("document-upload-user", 30),
+            Map.entry("document-request-user", 30),
+            Map.entry("vendor-import-preview-user", 10),
+            Map.entry("vendor-export-user", 10),
+            Map.entry("stripe-webhook", 600)));
     /** Per-rule window overriding {@link #window} (the CSV export is 10 per 10 minutes, not per minute). */
     private Map<String, Duration> windows = new LinkedHashMap<>(
             Map.of("vendor-export-user", Duration.ofMinutes(10)));

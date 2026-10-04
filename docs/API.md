@@ -634,7 +634,29 @@ Expired previews are deleted by a periodic cleanup (keep it simple: during previ
   (2) permission names (above); (3) template is import-permission only; (4) the `'` un-prefixing on import. Everything else matches the contract types.
 
 ### Billing (Phase 8)
-- `GET  /billing/subscription`
-- `POST /billing/checkout-session` → `{ url }`
-- `POST /billing/portal-session` → `{ url }`
-- `POST /webhooks/stripe` (no session, no CSRF; signature-verified)
+Billing always concerns the caller's ACTIVE organization (from `TenantContext`; there is no organization id in any URL, and one sent in a body/query is ignored).
+
+- `GET /billing/subscription` (any member) →
+  `{ status: "TRIALING"|"ACTIVE"|"PAST_DUE"|"CANCELED"|"INCOMPLETE"|"UNPAID", plan: "standard", trialEndsAt: ISO|null, currentPeriodEnd: ISO|null, cancelAtPeriodEnd: bool, readOnly: bool, canManage: bool }`.
+  `canManage` = the caller may use checkout/portal (OWNER). `readOnly` is computed per request by the single pure rule `SubscriptionAccess`:
+  ACTIVE and PAST_DUE (grace) are writable; TRIALING is writable only while `trialEndsAt` is in the future (app clock; missing date = read-only); CANCELED, UNPAID, INCOMPLETE are read-only.
+  `readOnly` is always `false` when `vendorflow.billing.enabled=false` (local/test default).
+- `POST /billing/checkout-session` → `{ url }` (Stripe Checkout, mode subscription, price `STRIPE_PRICE_ID`; success/cancel = `APP_BASE_URL/settings/billing?checkout=success|canceled`).
+  OWNER only (`BILLING_MANAGE`; ADMIN is the lowest denied role, 403). 409 `title: "Already subscribed"` when the organization already has an ACTIVE/PAST_DUE/TRIALING Stripe subscription (use the portal).
+- `POST /billing/portal-session` → `{ url }` (Stripe Customer Portal, return URL `APP_BASE_URL/settings/billing`). OWNER only.
+  Both create the Stripe customer lazily (idempotency key per organization) and store `stripe_customer_id`.
+  Order of checks: 401/403 (authz) → 503 → 409 → provider call. 503 `title: "Billing not configured"` when billing is disabled or `STRIPE_SECRET_KEY`/`STRIPE_PRICE_ID` are missing (never a fake URL).
+  502 `title: "Billing provider unavailable"` when Stripe cannot be reached (no provider detail in the body).
+- `POST /webhooks/stripe` — no session, CSRF-exempt, rate limit rule `stripe-webhook` (600/min/IP). Raw body (max `vendorflow.billing.webhook-max-body-bytes`, 256 KiB → 413) verified with
+  `Stripe-Signature` (HMAC, tolerance 300 s, past timestamps only as in the SDK). Responses: 200 `{ "received": true }` (also for duplicates and ignored/unknown-customer events),
+  400 `title: "Invalid webhook"` (bad/missing signature, stale timestamp, unparsable body; never says which), 503 `title: "Billing not configured"` (no `STRIPE_WEBHOOK_SECRET`),
+  500 (processing failed: Stripe retries; the event row is FAILED and is reprocessed by the retry).
+  Handled: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.payment_failed`; every other type is acknowledged and recorded.
+  Organization is resolved only from the stored `stripe_customer_id` (a completed checkout whose customer is not stored yet may match an existing row WITHOUT a customer through `client_reference_id`);
+  state is always re-read from Stripe by subscription id (`BillingGateway.retrieveSubscription`), so out-of-order and replayed events converge. A late event about an old ended subscription never overrides a newer one.
+  Audit: `billing.trial.started`, `billing.customer.created`, `billing.checkout.started`, `billing.portal.opened`, `billing.checkout.completed`, `billing.subscription.created|updated|deleted`, `billing.payment.failed`
+  (webhook events carry `{stripeEventId, before, after}`, no actor).
+- **Read-only mode (402)**: while `readOnly`, every mutating request (POST/PUT/PATCH/DELETE) on `/api/v1/**` answers
+  `402 { type: ".../problems/subscription-inactive", title: "Subscription inactive", status: 402, detail, requestId }` (one MVC interceptor, `ReadOnlyGuardInterceptor`, runs before the controller, so also before body validation and role checks).
+  Always allowed: all GETs (lists, downloads, CSV export/template), `/auth/**`, `/billing/**`, `/webhooks/**`, `/session/**` (switch organization), `/invitations/**` (accept), `/me/**`, and `DELETE /organization/members/{id}` (leave/offboard).
+  Requests without an active organization are not blocked by this guard. Scheduled reminders/digests skip read-only organizations (they resume when it is active again).
