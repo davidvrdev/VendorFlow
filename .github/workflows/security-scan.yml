@@ -71,4 +71,4 @@ jobs:
           retention-days: 30
       - name: Note when skipped
         if: env.NVD_API_KEY == ''
-        run: echo "NVD_API_KEY secret not set: OWASP dependency-check skipped (the OSV job above is the gate)."
+        run: echo "NVD_API_KEY secret not set - OWASP dependency-check skipped (the OSV job above is the gate)."
