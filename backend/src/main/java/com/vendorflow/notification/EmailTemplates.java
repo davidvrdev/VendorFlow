@@ -24,6 +24,7 @@ public class EmailTemplates {
         return switch (kind) {
             case EMAIL_VERIFICATION -> emailVerification(payload);
             case PASSWORD_RESET -> passwordReset(payload);
+            case PASSWORD_CHANGED -> passwordChanged(payload);
             case INVITATION -> invitation(payload);
             case DOCUMENT_REQUEST -> documentRequest(payload);
             case COMPLIANCE_DIGEST -> complianceDigest(payload);
@@ -60,6 +61,21 @@ public class EmailTemplates {
                 + "<p><a href=\"" + HtmlUtils.htmlEscape(link) + "\">Choose a new password</a></p>"
                 + "<p>This link expires in 30 minutes and can be used once. If you did not ask for this, ignore this "
                 + "email: your password stays the same.</p>";
+        return new RenderedEmail(subject, text, html);
+    }
+
+    /** Security notice (ASVS V2.1.6/3.7.1): no link and no secret, so a leaked mailbox copy gives nothing. */
+    private RenderedEmail passwordChanged(Map<String, Object> payload) {
+        String name = oneLine(String.valueOf(payload.getOrDefault("fullName", "there")));
+        String subject = "Your VendorFlow password was changed";
+        String text = "Hi " + name + ",\n\n"
+                + "The password for your VendorFlow account was just changed and all other sessions were signed out.\n\n"
+                + "If this was you, nothing more to do. If it was not, reset your password right away at " + baseUrl
+                + "/forgot-password and contact support.\n";
+        String html = "<p>Hi " + HtmlUtils.htmlEscape(name) + ",</p>"
+                + "<p>The password for your VendorFlow account was just changed and all other sessions were signed out.</p>"
+                + "<p>If this was you, nothing more to do. If it was not, reset your password right away at "
+                + HtmlUtils.htmlEscape(baseUrl + "/forgot-password") + " and contact support.</p>";
         return new RenderedEmail(subject, text, html);
     }
 

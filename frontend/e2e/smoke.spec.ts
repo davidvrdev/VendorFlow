@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 
 test("landing page shows the headline and Sign in leads to /login", async ({ page }) => {
   await page.goto("/");
@@ -31,7 +31,7 @@ test("reset-password strips the token from the URL and posts it in the body (moc
   await expect(page).toHaveURL(/\/reset-password$/); // fragment stripped via history.replaceState
 
   await page.getByLabel("New password", { exact: true }).fill("a-very-long-passphrase");
-  await page.getByLabel("Confirm new password").fill("a-very-long-passphrase");
+  await page.getByLabel("Confirm new password", { exact: true }).fill("a-very-long-passphrase");
   await page.getByRole("button", { name: "Change password" }).click();
   await expect(page.getByText("Your password has been changed.")).toBeVisible();
   expect(posted).toEqual({ token: "secret-token-123", newPassword: "a-very-long-passphrase" });

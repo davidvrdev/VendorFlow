@@ -35,6 +35,7 @@ class RateLimitRulesTest extends IntegrationTest {
             Map.entry("signup", "SecurityAndRateLimitTest.signupAndOtherAuthRulesHaveTheirOwnLimits"),
             Map.entry("resend-verification", "SecurityAndRateLimitTest.signupAndOtherAuthRulesHaveTheirOwnLimits"),
             Map.entry("password-reset-request", "RateLimitRulesTest.passwordResetRequest"),
+            Map.entry("password-change", "PasswordChangeTest.isRateLimitedPerUser"),
             Map.entry("token-redemption", "RateLimitRulesTest.tokenRedemption"),
             Map.entry("invitation", "RateLimitRulesTest.invitationLookupAndAcceptShareOneBudget"),
             Map.entry("document-upload", "DocumentUploadTest.uploadsAreRateLimitedPerIpAt30PerMinute"),

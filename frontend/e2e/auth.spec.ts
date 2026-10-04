@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 
 // Full-stack journey: needs the Spring backend + Postgres behind /api (see docs/DEV_SETUP.md).
 // Run with E2E_FULLSTACK=1 npx playwright test e2e/auth.spec.ts
@@ -22,7 +22,7 @@ test("signup, logout, login, update organization settings, invite a member", asy
   await page.waitForLoadState("networkidle"); // wait for hydration before typing into RHF inputs
   await page.getByLabel("Full name").fill("Erin E2E");
   await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Organization name").fill(orgName);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
@@ -33,17 +33,17 @@ test("signup, logout, login, update organization settings, invite a member", asy
   // Logout -> login
   await signOut(page);
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 
   // Wrong password shows the generic message
   await signOut(page);
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("definitely-not-the-password");
+  await page.getByLabel("Password", { exact: true }).fill("definitely-not-the-password");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Invalid email or password." })).toBeVisible();
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 

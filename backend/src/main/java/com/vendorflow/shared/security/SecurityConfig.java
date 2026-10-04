@@ -13,6 +13,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderNotFoundException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -119,14 +120,20 @@ public class SecurityConfig {
     }
 
     /**
-     * {bcrypt} via DelegatingPasswordEncoder so hashes can migrate to Argon2 later without a schema change.
-     * PasswordEncoderFactories.createDelegatingPasswordEncoder() hard-codes bcrypt strength 10, so we build the
-     * delegating encoder ourselves to get the cost factor documented in SECURITY.md (12; configurable for tests).
+     * Argon2id for new hashes (OWASP: m=19 MiB, t=2, p=1; ASVS V2.1.2), {bcrypt} kept so existing hashes still verify;
+     * AuthService re-hashes a bcrypt hash to Argon2id on the next successful login (upgradeEncoding). Built by hand
+     * instead of PasswordEncoderFactories because that factory hard-codes bcrypt strength 10 as the default.
+     * Cost parameters are properties only so the test profile can lower them for speed.
      */
     @Bean
-    PasswordEncoder passwordEncoder(@Value("${app.security.bcrypt-strength:12}") int strength) {
-        return new DelegatingPasswordEncoder("bcrypt", Map.of("bcrypt", new BCryptPasswordEncoder(strength)));
+    PasswordEncoder passwordEncoder(@Value("${app.security.bcrypt-strength:12}") int bcryptStrength,
+            @Value("${app.security.argon2-memory-kib:19456}") int argonMemoryKib,
+            @Value("${app.security.argon2-iterations:2}") int argonIterations) {
+        return new DelegatingPasswordEncoder("argon2", Map.of(
+                "argon2", new Argon2PasswordEncoder(16, 32, 1, argonMemoryKib, argonIterations),
+                "bcrypt", new BCryptPasswordEncoder(bcryptStrength)));
     }
+
 
     /**
      * Login is implemented by identity.AuthService, so no AuthenticationManager is ever used. Spring Boot only

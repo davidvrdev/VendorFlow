@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import { openVerificationLink, PASSWORD, signOut, signUp, uniqueUser } from "./support/flows";
 import { latestLink } from "./support/mailbox";
 
@@ -37,7 +37,7 @@ test("existing user: sign in to accept an invitation, then leave and switch back
   await expect(guestPage).toHaveURL(/\/login\?next=%2Finvite$|\/login\?next=\/invite$/);
   await guestPage.waitForLoadState("networkidle");
   await guestPage.getByLabel("Email").fill(guest.email);
-  await guestPage.getByLabel("Password").fill(PASSWORD);
+  await guestPage.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await guestPage.getByRole("button", { name: "Sign in" }).click();
   await expect(guestPage).toHaveURL(/\/invite$/);
   await guestPage.getByRole("button", { name: "Accept invitation" }).click();

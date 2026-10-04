@@ -3,7 +3,7 @@
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { verifyEmail } from "@/features/auth/api";
 import { ApiError } from "@/lib/api/errors";
@@ -19,6 +19,16 @@ export function VerifyEmail() {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // Verification tokens are single-use: StrictMode's double effect must not POST twice.
   const submitted = useRef(false);
+  // Next's router keeps the URL it first loaded (fragment included) as its canonical URL and writes it back to the
+  // address bar when a refresh/navigation settles. On a cold server that write-back lands AFTER our replaceState, so the
+  // token reappeared. Strip it again once the refresh transition has finished (observable via isPending).
+  const [refreshing, startRefresh] = useTransition();
+  const refreshStarted = useRef(false);
+  useEffect(() => {
+    if (refreshStarted.current && !refreshing) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, [refreshing]);
 
   useEffect(() => {
     if (!ready || !token || submitted.current) return;
@@ -29,7 +39,8 @@ export function VerifyEmail() {
         // If the user is signed in, re-read /me so the unverified banner disappears. Next restores the
         // URL it last navigated to on refresh (fragment included), so first make the stripped URL canonical.
         router.replace("/verify-email");
-        router.refresh();
+        refreshStarted.current = true;
+        startRefresh(() => router.refresh());
       },
       (error: unknown) =>
         setOutcome({
@@ -42,7 +53,7 @@ export function VerifyEmail() {
                 : NETWORK_ERROR_MESSAGE,
         }),
     );
-  }, [ready, token, router]);
+  }, [ready, token, router, startRefresh]);
 
   if (!ready) return <AuthCard title="Verifying your email" description="Loading…" />;
 

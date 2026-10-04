@@ -75,6 +75,9 @@ function SelectContent({
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
+          // Radix renders an inline <style> for the viewport; without the nonce the strict style-src CSP blocks it.
+          // The content only mounts after the user opens the select (client only), so reading window is safe.
+          nonce={typeof window === "undefined" ? undefined : window.__webpack_nonce__}
           data-position={position}
           className={cn(
             "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { signUp, uniqueUser } from "./support/flows";
 
 test.skip(!process.env.E2E_FULLSTACK, "requires backend (profile e2e) + Postgres");

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import { BANNER_TEXT, openVerificationLink, signUp, uniqueUser } from "./support/flows";
 import { latestLink } from "./support/mailbox";
 

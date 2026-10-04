@@ -38,3 +38,6 @@ frontend/*.tsbuildinfo
 
 # --- Claude Code local-only settings ---
 .claude/settings.local.json
+
+# --- Local backups (encrypted dumps still never belong in git) ---
+backups/

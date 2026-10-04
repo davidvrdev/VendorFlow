@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { FormAlert } from "@/components/forms/form-alert";
 import { TextField } from "@/components/forms/field";
+import { PasswordField } from "@/features/auth/components/password-field";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { fetchMe, logout } from "@/features/auth/api";
@@ -246,10 +247,9 @@ function CreateAccountForm({ token, onDone, onError }: AcceptProps) {
       <p className="text-sm text-muted-foreground">Create your account to accept.</p>
       <FormAlert message={formError} />
       <TextField id="fullName" label="Full name" autoComplete="name" error={errors.fullName?.message} {...register("fullName")} />
-      <TextField
+      <PasswordField
         id="password"
         label="Password"
-        type="password"
         autoComplete="new-password"
         help={PASSWORD_HELP}
         error={errors.password?.message}

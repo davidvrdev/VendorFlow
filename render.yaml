@@ -1,0 +1,111 @@
+# Render Blueprint for VendorFlow (ADR-0010). Region: Frankfurt (same region as the Supabase project, EU).
+#
+# Topology (the browser only ever talks to vendorflow-web; ADR-0003):
+#   browser --https--> vendorflow-web (public, Next.js) --private network--> vendorflow-api (private, Spring Boot)
+#                                                                              |--> vendorflow-clamav (private, ClamAV)
+#                                                                              |--> Supabase Postgres + Storage (external, TLS)
+#
+# Every value marked `sync: false` is a SECRET or an account-specific value: Render asks for it in the dashboard the first
+# time the Blueprint is applied. Nothing secret is in this file. Step-by-step: docs/RUNBOOKS.md.
+#
+# Deploys: autoDeployTrigger is "off" on purpose. GitHub Actions (.github/workflows/ci.yml, job "deploy") calls the
+# deploy hooks only after ALL CI jobs pass, backend first, then frontend (expand/contract migrations need that order).
+# If you prefer Render to deploy by itself, set autoDeployTrigger: checksPass on both services and remove the hook secrets.
+
+services:
+  # ---------------------------------------------------------------- frontend (public)
+  - type: web
+    name: vendorflow-web
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    autoDeployTrigger: "off"
+    healthCheckPath: /healthz # does not call the backend (a backend outage must not restart the frontend)
+    envVars:
+      # Read at run time by Server Components (src/lib/api/server.ts). The /api/* rewrite is baked at BUILD time from the
+      # Dockerfile default (same value): change both together if the API service is ever renamed.
+      - key: BACKEND_URL
+        value: http://vendorflow-api:8080
+
+  # ---------------------------------------------------------------- backend (private: no public URL)
+  - type: pserv
+    name: vendorflow-api
+    runtime: docker
+    region: frankfurt
+    plan: standard # 2 GB: JVM + Argon2id (19 MiB per hash) + 15 MB uploads. "starter" (512 MB) is too tight.
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    autoDeployTrigger: "off"
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Public https URL of vendorflow-web (custom domain once configured). Used in email links; must be https.
+      - key: APP_BASE_URL
+        sync: false
+      - key: APP_IP_HASH_SECRET
+        generateValue: true # random, >= 32 chars (ProfileGuard). Changing it only changes the IP hashes in new audit rows.
+      # Database (Supabase): session-mode/direct connection, NOT the transaction pooler (docs/DEPLOYMENT.md).
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USERNAME
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      # Documents: Supabase Storage through its S3-compatible API, private bucket.
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: STORAGE_S3_ENDPOINT
+        sync: false
+      - key: STORAGE_S3_REGION
+        sync: false
+      - key: STORAGE_S3_BUCKET
+        sync: false
+      - key: STORAGE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_S3_SECRET_ACCESS_KEY
+        sync: false
+      # Malware scanning (prod refuses to start without it).
+      - key: STORAGE_SCANNER
+        value: clamav
+      - key: CLAMAV_HOST
+        fromService:
+          type: pserv
+          name: vendorflow-clamav
+          property: host
+      - key: CLAMAV_PORT
+        value: "3310"
+      # Email (Resend). The sending domain must be verified in Resend first.
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false # e.g. VendorFlow <notifications@your-domain.com>
+      # Billing (Stripe LIVE keys; ProfileGuard refuses test keys in prod).
+      - key: BILLING_ENABLED
+        value: "true"
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      # Peers allowed to set X-Forwarded-For: Render's private network is 10.0.0.0/8. Verify after the first deploy
+      # (docs/RUNBOOKS.md, "Check the client IP"). Leave unset to use the application default (loopback + private ranges).
+      # - key: TRUSTED_PROXIES_REGEX
+
+  # ---------------------------------------------------------------- malware scanner (private)
+  - type: pserv
+    name: vendorflow-clamav
+    runtime: docker
+    region: frankfurt
+    plan: standard # signature DB needs ~1.3 GB RAM
+    dockerfilePath: ./clamav/Dockerfile
+    dockerContext: ./clamav
+    autoDeployTrigger: "off"
+    disk:
+      name: clamav-signatures
+      mountPath: /var/lib/clamav
+      sizeGB: 2

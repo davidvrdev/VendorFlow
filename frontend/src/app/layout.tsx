@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ZodCspConfig } from "@/components/zod-csp-config";
+import { StyleNonceBridge } from "@/components/style-nonce-bridge";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -27,6 +28,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           Skip to main content
         </a>
         <ZodCspConfig />
+        <StyleNonceBridge />
         {children}
         <Toaster richColors closeButton />
       </body>

@@ -111,7 +111,7 @@ class PasswordResetTest extends IntegrationTest {
         MvcResult result = anonymous.post("/api/v1/auth/password-reset/confirm",
                 Map.of("token", token, "newPassword", NEW_PASSWORD)).andExpect(status().isNoContent()).andReturn();
 
-        assertThat(result.getResponse().getHeaders("Set-Cookie")).noneMatch(c -> c.startsWith("VF_SESSION="));
+        assertThat(result.getResponse().getHeaders("Set-Cookie")).noneMatch(c -> c.contains("VF_SESSION="));
         anonymous.get("/api/v1/me").andExpect(status().isUnauthorized());
         accounts.newClient().post("/api/v1/auth/login", Map.of("email", account.email(), "password", account.password()))
                 .andExpect(status().isUnauthorized());

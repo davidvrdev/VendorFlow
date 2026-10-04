@@ -31,7 +31,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 public abstract class IntegrationTest {
 
     @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine")
+            // Many cached Spring contexts (one per distinct test config) each hold a connection pool.
+            .withCommand("postgres", "-c", "max_connections=400");
 
     static {
         // Started once for the whole JVM; Ryuk removes it when the JVM exits.

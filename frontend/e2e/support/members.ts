@@ -25,7 +25,7 @@ export async function inviteMemberAndJoin(
   await member.goto(await latestLink(request, email, "INVITATION"));
   await member.waitForLoadState("networkidle");
   await member.getByLabel("Full name").fill("Mia Member");
-  await member.getByLabel("Password").fill(PASSWORD);
+  await member.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await member.getByRole("button", { name: "Create account and join" }).click();
   await expect(member).toHaveURL(/\/dashboard$/);
   return member;

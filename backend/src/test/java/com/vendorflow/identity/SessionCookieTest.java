@@ -52,7 +52,7 @@ class SessionCookieTest extends IntegrationTest {
         MockHttpServletResponse response = client.post("/api/v1/auth/signup", TestAccounts.signupBody(
                 TestAccounts.uniqueEmail(), TestAccounts.PASSWORD, "Cookie Tester", "Cookie Org"))
                 .andExpect(status().isCreated()).andReturn().getResponse();
-        String session = setCookie(response, "VF_SESSION");
+        String session = setCookie(response, "__Host-VF_SESSION");
         assertThat(session).contains("; Secure").contains("; HttpOnly").contains("SameSite=Lax").contains("Path=/");
         assertThat(session).as("host-only cookie: no Domain attribute so subdomains never receive it")
                 .doesNotContain("Domain=");
@@ -66,7 +66,7 @@ class SessionCookieTest extends IntegrationTest {
         assertThat(sessionRows(account)).isEqualTo(1);
         MockHttpServletResponse response = account.client().post("/api/v1/auth/logout", null)
                 .andExpect(status().isNoContent()).andReturn().getResponse();
-        String expired = setCookie(response, "VF_SESSION");
+        String expired = setCookie(response, "__Host-VF_SESSION");
         assertThat(expired).contains("Max-Age=0").contains("; Secure").contains("; HttpOnly");
         assertThat(sessionRows(account)).as("row removed from spring_session, not just the cookie").isZero();
     }
@@ -88,15 +88,15 @@ class SessionCookieTest extends IntegrationTest {
         Account victim = accounts.signup("Fixation Org");
         String planted = "planted-by-attacker-0123456789";
         ApiClient browser = accounts.newClient();
-        browser.setCookie(ApiClient.SESSION_COOKIE, planted);
+        browser.setCookie("__Host-VF_SESSION", planted);
         browser.post("/api/v1/auth/login", Map.of("email", victim.email(), "password", victim.password()))
                 .andExpect(status().isOk());
-        assertThat(browser.cookie(ApiClient.SESSION_COOKIE)).isNotNull().isNotEqualTo(planted);
+        assertThat(browser.cookie("__Host-VF_SESSION")).isNotNull().isNotEqualTo(planted);
         ApiClient attacker = new ApiClient(mvc, json);
-        attacker.setCookie(ApiClient.SESSION_COOKIE, planted);
+        attacker.setCookie("__Host-VF_SESSION", planted);
         attacker.get("/api/v1/me").andExpect(status().isUnauthorized());
         // Same with the base64 form Spring Session actually puts in the cookie.
-        attacker.setCookie(ApiClient.SESSION_COOKIE, java.util.Base64.getEncoder().encodeToString(planted.getBytes()));
+        attacker.setCookie("__Host-VF_SESSION", java.util.Base64.getEncoder().encodeToString(planted.getBytes()));
         attacker.get("/api/v1/me").andExpect(status().isUnauthorized());
     }
 

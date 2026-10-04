@@ -23,12 +23,11 @@ function fillAll(overrides: Partial<Record<"fullName" | "email" | "password" | "
 
 describe("signupSchema", () => {
   const ok = { fullName: "A", email: "a@b.co", password: "x".repeat(12), organizationName: "O" };
-  it("enforces 12 characters minimum and 72 UTF-8 bytes maximum (bcrypt limit)", () => {
+  it("enforces 12 characters minimum and 128 characters maximum", () => {
     expect(signupSchema.safeParse({ ...ok, password: "x".repeat(11) }).success).toBe(false);
-    expect(signupSchema.safeParse({ ...ok, password: "x".repeat(72) }).success).toBe(true);
-    expect(signupSchema.safeParse({ ...ok, password: "x".repeat(73) }).success).toBe(false);
-    // 40 characters but 80 bytes: rejected by bytes, not characters
-    expect(signupSchema.safeParse({ ...ok, password: "ñ".repeat(40) }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...ok, password: "x".repeat(128) }).success).toBe(true);
+    expect(signupSchema.safeParse({ ...ok, password: "x".repeat(129) }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...ok, password: "ñ".repeat(40) }).success).toBe(true);
   });
   it("enforces name and organization limits", () => {
     expect(signupSchema.safeParse({ ...ok, fullName: "x".repeat(101) }).success).toBe(false);
@@ -49,7 +48,7 @@ describe("SignupForm", () => {
 
   it("shows the password rule as help text and validation errors for a short password", async () => {
     render(<SignupForm />);
-    expect(screen.getByText(/at least 12 characters/i)).toBeInTheDocument();
+    expect(screen.getByText(/12 to 128 characters/i)).toBeInTheDocument();
     fillAll({ password: "short" });
     expect(await screen.findByText("Password must be at least 12 characters.")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toHaveAttribute("aria-invalid", "true");

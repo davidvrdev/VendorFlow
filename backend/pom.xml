@@ -24,7 +24,39 @@
 		<tomcat.version>11.0.25</tomcat.version>
 		<jackson-bom.version>3.1.7</jackson-bom.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<!-- AWS SDK v2 BOM: one version for all awssdk artifacts (ADR-0010). -->
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>2.55.11</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
+		<!-- S3ObjectStorage against Supabase Storage's S3 endpoint (ADR-0010). The default HTTP clients (Netty, Apache 5) are excluded: only
+		     the JDK-based url-connection-client is used (no third-party HTTP stack; an Apache HttpClient 5 on the classpath would also silently change the HTTP client Spring picks for RestClient). -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>software.amazon.awssdk</groupId>
+					<artifactId>netty-nio-client</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>software.amazon.awssdk</groupId>
+					<artifactId>apache5-client</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>url-connection-client</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
@@ -61,6 +93,12 @@
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-csv</artifactId>
 			<version>1.14.1</version>
+		</dependency>
+		<!-- Argon2id (ASVS V2.1.2): Spring Security's Argon2PasswordEncoder needs BouncyCastle's implementation; see DECISIONS.md -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>1.86</version>
 		</dependency>
 		<dependency>
 			<groupId>com.stripe</groupId>

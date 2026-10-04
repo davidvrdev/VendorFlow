@@ -73,3 +73,123 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+  e2e-fullstack:
+    name: E2E full stack (Playwright, real backend + Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vendorflow
+          POSTGRES_USER: vendorflow
+          POSTGRES_PASSWORD: vendorflow-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vendorflow -d vendorflow"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      # Throwaway CI database; the e2e profile also fixes a FAKE Stripe webhook secret (never a real key).
+      DATABASE_URL: jdbc:postgresql://localhost:5432/vendorflow
+      DATABASE_USERNAME: vendorflow
+      DATABASE_PASSWORD: vendorflow-ci
+      E2E_FULLSTACK: "1"
+      E2E_REUSE_SERVER: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build backend jar (tests run in the backend job)
+        working-directory: backend
+        run: ./mvnw -B -ntp -DskipTests package
+      - name: Start backend (profiles local,e2e)
+        working-directory: backend
+        run: |
+          nohup java -jar target/*-SNAPSHOT.jar --spring.profiles.active=local,e2e > ../backend.log 2>&1 &
+          for i in $(seq 1 90); do
+            curl -fs http://localhost:8080/actuator/health >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "backend did not become healthy"; tail -n 80 ../backend.log; exit 1
+      - name: Build frontend (standalone) and install browser
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Start frontend
+        working-directory: frontend
+        run: |
+          nohup node scripts/start-standalone.mjs > ../frontend.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://localhost:3000/ >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "frontend did not start"; tail -n 50 ../frontend.log; exit 1
+      - name: Playwright full-stack suite
+        working-directory: frontend
+        run: npx playwright test
+      - name: Upload Playwright report and server logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-fullstack-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            backend.log
+            frontend.log
+          retention-days: 7
+
+  docker-build:
+    name: Docker images build (backend, frontend, clamav)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      # Build only (no push): catches a broken Dockerfile before it blocks a deploy. Tests ran in the other jobs.
+      - name: Backend image
+        run: docker build -t vendorflow-api:ci backend
+      - name: Frontend image
+        run: docker build -t vendorflow-web:ci frontend
+      - name: ClamAV image
+        run: docker build -t vendorflow-clamav:ci clamav
+
+  deploy:
+    name: Deploy to Render (main only)
+    # Only after EVERY other job is green, and only for pushes to main (never for pull requests).
+    needs: [backend, frontend, e2e-fullstack, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # One deploy at a time; a newer push waits instead of cancelling a deploy in flight.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      # Render deploy hooks are secret URLs (anyone holding one can trigger a deploy). Settings > Secrets > Actions.
+      HOOK_BACKEND: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
+      HOOK_FRONTEND: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
+    steps:
+      - name: Trigger backend deploy (runs Flyway migrations on startup)
+        run: |
+          if [ -z "$HOOK_BACKEND" ]; then echo "RENDER_DEPLOY_HOOK_BACKEND not set: skipping backend deploy."; exit 0; fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$HOOK_BACKEND" > /dev/null
+          echo "Backend deploy triggered."
+      # Backend first: migrations are expand/contract, so the OLD frontend keeps working against the NEW backend and
+      # the new frontend only ever needs the new backend (docs/DEPLOYMENT.md, migration strategy).
+      - name: Trigger frontend deploy
+        run: |
+          if [ -z "$HOOK_FRONTEND" ]; then echo "RENDER_DEPLOY_HOOK_FRONTEND not set: skipping frontend deploy."; exit 0; fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$HOOK_FRONTEND" > /dev/null
+          echo "Frontend deploy triggered."

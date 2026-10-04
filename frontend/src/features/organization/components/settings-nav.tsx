@@ -9,6 +9,7 @@ import type { Role } from "../types";
 const ITEMS = [
   { href: "/settings/organization", label: "Organization" },
   { href: "/settings/members", label: "Members" },
+  { href: "/settings/account", label: "Account" },
 ];
 
 // Cosmetic: the page itself redirects roles without REQUIREMENTS_MANAGE and the API enforces it.

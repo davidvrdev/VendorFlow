@@ -61,11 +61,11 @@ class AuthFlowTest extends IntegrationTest {
     }
 
     @Test
-    void signupStoresBcryptHashWithDelegatingPrefix() throws Exception {
+    void signupStoresArgon2idHashWithDelegatingPrefix() throws Exception {
         Account account = accounts.signup("Hash Org");
         String hash = jdbc.queryForObject("select password_hash from app_user where id = ?::uuid", String.class,
                 account.userId());
-        assertThat(hash).startsWith("{bcrypt}$2");
+        assertThat(hash).startsWith("{argon2}$argon2id$");
         assertThat(passwordEncoder.matches(account.password(), hash)).isTrue();
     }
 
@@ -111,16 +111,56 @@ class AuthFlowTest extends IntegrationTest {
     }
 
     @Test
-    void passwordUpTo72BytesWorksAndLongerIsRejectedCleanly() throws Exception {
-        String longPassword = "Ab1!".repeat(18); // 72 bytes: the bcrypt limit
-        Account account = accounts.signup(TestAccounts.uniqueEmail(), longPassword, "Long Pass", "Long Org");
-        accounts.login(account.email(), longPassword);
-        // 73+ bytes: signup says 400 (not a 500), login says the generic 401.
+    void longNonAsciiPassphraseWorksAndMoreThan128CharactersIsRejected() throws Exception {
+        // 64+ characters, well over 72 UTF-8 bytes: beyond bcrypt's limit, fine for Argon2id (ASVS V2.1.2).
+        String passphrase = "Zażółć gęślą jaźń ".repeat(3)
+                + "Ünïcödé-pässphräse-ñ-ß-€€€-Ωμέγα-1";
+        assertThat(passphrase.length()).isBetween(64, 128);
+        assertThat(passphrase.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).isGreaterThan(72);
+        Account account = accounts.signup(TestAccounts.uniqueEmail(), passphrase, "Long Pass", "Long Org");
+        accounts.login(account.email(), passphrase);
+
+        String tooLong = "Ab1!".repeat(32) + "x"; // 129 characters
         accounts.newClient().post("/api/v1/auth/signup",
-                        TestAccounts.signupBody(TestAccounts.uniqueEmail(), longPassword + "x", "A", "Org"))
+                        TestAccounts.signupBody(TestAccounts.uniqueEmail(), tooLong, "A", "Org"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("password"));
-        accounts.newClient().post("/api/v1/auth/login", Map.of("email", account.email(), "password", longPassword + "x"))
+        // Login: request validation (max 128) answers 400, never a 500.
+        accounts.newClient().post("/api/v1/auth/login", Map.of("email", account.email(), "password", tooLong))
+                .andExpect(status().isBadRequest());
+        // Exactly 128 characters is accepted.
+        accounts.signup(TestAccounts.uniqueEmail(), "Ab1!".repeat(32), "Max Pass", "Max Org");
+    }
+
+    @Test
+    void legacyBcryptHashStillVerifiesAndIsUpgradedToArgon2idOnLogin() throws Exception {
+        Account account = accounts.signup("Legacy Org");
+        String bcrypt = "{bcrypt}" + new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(4)
+                .encode(account.password());
+        jdbc.update("update app_user set password_hash = ? where id = ?::uuid", bcrypt, account.userId());
+
+        // A wrong password never upgrades (and never matches).
+        accounts.newClient().post("/api/v1/auth/login", Map.of("email", account.email(), "password", "Wrong-Password-123"))
+                .andExpect(status().isUnauthorized());
+        assertThat(jdbc.queryForObject("select password_hash from app_user where id = ?::uuid", String.class,
+                account.userId())).isEqualTo(bcrypt);
+
+        accounts.login(account.email(), account.password());
+
+        String upgraded = jdbc.queryForObject("select password_hash from app_user where id = ?::uuid", String.class,
+                account.userId());
+        assertThat(upgraded).startsWith("{argon2}$argon2id$");
+        accounts.login(account.email(), account.password()); // still works with the new hash
+    }
+
+    @Test
+    void passwordOver72BytesNeverMatchesALegacyBcryptHashAndDoesNotCrash() throws Exception {
+        Account account = accounts.signup("Legacy Long Org");
+        String bcrypt = "{bcrypt}" + new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(4)
+                .encode(account.password());
+        jdbc.update("update app_user set password_hash = ? where id = ?::uuid", bcrypt, account.userId());
+        accounts.newClient().post("/api/v1/auth/login",
+                        Map.of("email", account.email(), "password", "Ab1!".repeat(30)))
                 .andExpect(status().isUnauthorized());
     }
 

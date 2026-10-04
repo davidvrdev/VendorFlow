@@ -71,6 +71,9 @@ app:
   security:
     # Cost factor of the {bcrypt} encoder (docs/SECURITY.md). Lowered only in the test and e2e profiles for speed.
     bcrypt-strength: 12
+    # Argon2id cost (OWASP minimum m=19 MiB, t=2, p=1); only the test profile lowers it.
+    argon2-memory-kib: 19456
+    argon2-iterations: 2
     # Secure flag of the VF_SESSION cookie. Fails SAFE: true by default; only local/test/e2e profiles set false.
     session-cookie-secure: true
     # Absolute session lifetime since login (the idle timeout above is sliding); see SessionLifetimeFilter.
@@ -107,8 +110,16 @@ app:
     # Total stored bytes per organization, all document states (413 "Storage quota exceeded").
     org-quota: 5GB
   storage:
-    # Only "filesystem" exists today; an S3-compatible provider comes before Phase 11 (ADR-0007).
+    # filesystem | s3. Prod refuses filesystem unless STORAGE_ALLOW_FILESYSTEM_IN_PROD=true (ProfileGuard, ADR-0010).
     provider: ${STORAGE_PROVIDER:filesystem}
+    allow-filesystem-in-prod: ${STORAGE_ALLOW_FILESYSTEM_IN_PROD:false}
+    s3:
+      # Supabase: https://<project-ref>.storage.supabase.co/storage/v1/s3 (path-style, private bucket).
+      endpoint: ${STORAGE_S3_ENDPOINT:}
+      region: ${STORAGE_S3_REGION:}
+      bucket: ${STORAGE_S3_BUCKET:}
+      access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:}
+      secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:}
     filesystem:
       # Relative paths resolve against the working directory (backend/ locally; gitignored as backend/storage-data/).
       root: ${STORAGE_FILESYSTEM_ROOT:./storage-data}
@@ -126,6 +137,16 @@ app:
     fixed-delay-ms: 900000
 
 vendorflow:
+  storage:
+    # noop | clamav. Prod refuses noop unless allow-noop-scanner-in-prod=true (ProfileGuard).
+    scanner: ${STORAGE_SCANNER:noop}
+    allow-noop-scanner-in-prod: ${STORAGE_ALLOW_NOOP_SCANNER_IN_PROD:false}
+    clamav:
+      host: ${CLAMAV_HOST:localhost}
+      port: ${CLAMAV_PORT:3310}
+      connect-timeout-ms: 3000
+      read-timeout-ms: 30000
+      chunk-size: 65536
   billing:
     # Off by default: no read-only enforcement and no Stripe calls (local/test). Prod defaults to ON (application-prod.yml)
     # and then refuses to start without the Stripe keys (ProfileGuard).

@@ -3,7 +3,7 @@
 _Last updated: 2026-10-04 (session 2)_
 
 ## Current Status
-Phases 0–8 ☑ **done** (… CSV, Billing). Owner authorized all remaining phases on 2026-10-04 (session 3); work
+Phases 0–10 ☑ **done** (… CSV, Billing, Security hardening, E2E/QA) = **MVP complete**. Owner authorized all remaining phases on 2026-10-04 (session 3); work
 continues phase by phase, stopping only on owner-only blockers.
 Users can manage organizations/members, vendors, required document types, upload/review/archive/download vendor
 documents, see derived compliance, work from a prioritized dashboard, request documents from vendors by email, receive
@@ -38,11 +38,18 @@ Stripe test-mode keys, pricing and plan limits (DECISIONS.md § Pending).
   402 read-only mode, prod fail-closed guard; billing page + banner; security review fixed (M1, L2–L5); verified live
   in Stripe test mode with the Stripe CLI forwarding webhooks.
 
+- Phase 9: architecture/endpoint/header/rate-limit/round-trip tests, CSP, dependency scanning, ASVS L1 walkthrough
+  with all FAILs fixed (ClamAV, change password, 100k list, Argon2id, __Host- cookie, password toggles).
+- Phase 10: 10 critical flows green full-stack (26/26 twice), CSP/page-error fixture, CI full-stack job.
+  Exploratory boundary QA (dates/time zones/idempotency) only shallow — carried to beta.
+
 ## In Progress
-- Phase 9 — Security hardening.
+- Phase 11 — Production deployment: everything built and tested locally (ADR-0010 Render + Supabase, S3ObjectStorage,
+  Dockerfiles, render.yaml, CI deploy hooks, backups, RUNBOOKS.md). **Blocked on the owner**: create Supabase/Render
+  accounts, Resend domain, Stripe live keys + webhook, deploy hooks (docs/RUNBOOKS.md §1), then smoke test.
 
 ## Blocked
-- CI has never run (no git remote) — owner must create the GitHub repo and push.
+- CI: repo is on GitHub (davidvrdev/VendorFlow); first runs not yet inspected by the director (private repo, no gh CLI).
 
 ## Next
 Phase 8 (Billing) → 9 (Hardening) → 10 (E2E/QA) = end of MVP; then 11 (deployment). Only on the owner's go.
@@ -57,10 +64,10 @@ Phase 8 (Billing) → 9 (Hardening) → 10 (E2E/QA) = end of MVP; then 11 (deplo
 
 ## Technical Debt
 - `MembershipRepository`/`InvitationRepository` join `AppUser` in JPQL (cross-feature read model) — accepted.
-- Package-level cycle `audit` ↔ `organization` (via `TenantContext`) — revisit with the architecture test (Phase 9).
+- Feature cycles `{identity, notification, organization}` and `{compliance, document, vendor}` frozen by the ArchUnit ratchet (audit↔organization fixed).
 - Rate limiter, per-recipient email throttle are in-memory/per instance — move to Postgres before >1 API instance.
 - Members/invitations UI reads only the first page (50) with "Showing N of M".
-- ~3–4 DB round trips per API call (Spring Session writes + membership check) — measure/optimize in Phase 9.
+- Measured: 3 fixed DB statements per authenticated request (session read, membership, session touch); enforced by DbRoundTripsTest.
 - `S3ObjectStorage` not implemented (ADR-0007), no real malware scanner, no orphan sweeper, no file retention policy.
 - Storage quota can overshoot by (concurrent uploads × 15 MB) per org (documented).
 - UX: vendor detail repeats "Add the vendor's email to request documents" per row — one card-level notice instead.

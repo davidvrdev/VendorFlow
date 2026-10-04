@@ -79,6 +79,20 @@ public class SessionService {
         sessionRepository.findByPrincipalName(userId.toString()).keySet().forEach(sessionRepository::deleteById);
     }
 
+    /** Revokes every session of the user EXCEPT the given one (password change: the actor stays signed in). */
+    public void endAllExcept(UUID userId, String keepSessionId) {
+        sessionRepository.findByPrincipalName(userId.toString()).keySet().stream()
+                .filter(id -> !id.equals(keepSessionId)).forEach(sessionRepository::deleteById);
+    }
+
+    /** New session id and CSRF token for the current session (privilege change), same as after login. */
+    public void rotate(HttpServletRequest request, HttpServletResponse response) {
+        if (request.getSession(false) != null) {
+            request.changeSessionId();
+        }
+        csrfTokenRepository.saveToken(csrfTokenRepository.generateToken(request), request, response);
+    }
+
     public void end(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
         if (session != null) {

@@ -27,16 +27,22 @@ Stripe → signed fixture events with a test webhook secret; storage → filesys
 - Test names describe behavior: `memberCannotArchiveVendor()`, `userOfOtherOrgGets404ForDocumentDownload()`.
 
 ## Critical E2E flows (Phase 10 must have all green)
-1. Signup / login / logout
-2. Organization isolation (two orgs, cross-access attempt via URL manipulation)
-3. Create vendor
-4. Upload document
-5. View/download document
-6. Unauthorized document access
-7. Document expiration reflected in status + dashboard
-8. Reminder generated (job triggered via test-only endpoint guarded by `test` profile)
-9. CSV import (with validation errors, then fixed)
-10. Stripe webhook updates subscription state
+All specs live in `frontend/e2e/`, run against the real backend (profile `local,e2e`) + Postgres with `E2E_FULLSTACK=1`, and import `test`/`expect` from `e2e/support/test.ts`, a global fixture that **fails any test on a CSP violation or uncaught page error** (also in extra `browser.newContext()` pages).
+
+| # | Flow | Spec (test) |
+|---|------|-------------|
+| 1 | Signup / login / logout | `auth.spec.ts` (signup, logout, login), `email-verification.spec.ts`, `password-reset.spec.ts` |
+| 2 | Organization isolation (URL manipulation) | `tenant-isolation.spec.ts`; foreign-id checks inside `vendors.spec.ts`, `documents.spec.ts`, `csv.spec.ts` |
+| 3 | Create vendor | `vendors.spec.ts` (lifecycle) |
+| 4 | Upload document | `documents.spec.ts` (upload, replace, validation, big upload, types) |
+| 5 | View / download document | `documents.spec.ts` (history, download) |
+| 6 | Unauthorized document access | `documents.spec.ts` (isolation, role limits) |
+| 7 | Expiration reflected in status + dashboard | `compliance.spec.ts`, `dashboard.spec.ts` |
+| 8 | Reminder generated | `notifications.spec.ts` (job triggered via `POST /api/test/reminders/run`, profile `e2e` only, loopback + ORG_SETTINGS_MANAGE) |
+| 9 | CSV import (errors, then fixed) | `csv.spec.ts` |
+| 10 | Stripe webhook updates subscription state | `billing.spec.ts` (HMAC-signed with the fixed FAKE secret in `application-e2e.yml`; `E2eBillingGateway` replaces the Stripe API; bad/stale signature rejected, Active, replay idempotent, `subscription.deleted` -> read-only banner + 402 on write) |
+
+Profile safety: `e2e` + `prod` together is refused at startup (`ProfileGuard`, covered by `ProfileGuardTest`). CI runs the whole suite in the `e2e-fullstack` job of `.github/workflows/ci.yml`.
 
 ## Commands
 ```bash

@@ -17,5 +17,28 @@ services:
       timeout: 3s
       retries: 10
 
+  # Optional malware scanner for uploads (ASVS V12.4.2). NOT started by default:
+  #   docker compose --profile scan up -d clamav
+  # then run the API with STORAGE_SCANNER=clamav (docs/DEV_SETUP.md). First start downloads the signature DB (minutes).
+  clamav:
+    image: clamav/clamav:stable
+    container_name: vendorflow-clamav
+    profiles: ["scan"]
+    environment:
+      # Must be >= the upload cap (app.documents.max-size, 15 MB); clamd answers ERROR above it and uploads fail closed.
+      CLAMD_CONF_StreamMaxLength: 16M
+      CLAMD_CONF_MaxFileSize: 16M
+    ports:
+      - "127.0.0.1:3310:3310" # bind to loopback only
+    volumes:
+      - vendorflow-clamdb:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
 volumes:
   vendorflow-pgdata:
+  vendorflow-clamdb:

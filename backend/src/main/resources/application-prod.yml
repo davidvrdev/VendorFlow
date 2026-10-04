@@ -12,8 +12,27 @@ logging:
   structured:
     format:
       console: ecs
+  # Production log levels: INFO; never DEBUG in prod (would log SQL/parameters).
+  level:
+    root: INFO
+    com.vendorflow: INFO
+    org.apache.catalina: WARN
 
 vendorflow:
   billing:
     # Fail closed: forgetting BILLING_ENABLED means billing ON, which requires the keys below (ProfileGuard).
     enabled: ${BILLING_ENABLED:true}
+
+server:
+  # Finish in-flight requests (uploads) on SIGTERM during a deploy instead of cutting them off.
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    hikari:
+      # Supabase pooler/direct connections are limited (free/pro tiers); one backend instance must not hog them.
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      # Flyway/Hibernate need a session-level connection: use the Supabase DIRECT or SESSION-mode pooler URL (port 5432),
+      # not the transaction-mode pooler (port 6543). See docs/DEPLOYMENT.md.

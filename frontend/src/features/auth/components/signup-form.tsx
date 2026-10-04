@@ -13,6 +13,7 @@ import { PASSWORD_HELP, signupSchema, type SignupValues } from "@/features/auth/
 import { ApiError } from "@/lib/api/errors";
 import { applyApiError } from "@/lib/forms/api-errors";
 import { AuthCard } from "./auth-card";
+import { PasswordField } from "./password-field";
 
 const FIELDS = ["fullName", "email", "password", "organizationName"] as const;
 
@@ -68,10 +69,9 @@ export function SignupForm() {
         <FormAlert message={formError} />
         <TextField id="fullName" label="Full name" autoComplete="name" error={errors.fullName?.message} {...register("fullName")} />
         <TextField id="email" label="Work email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
-        <TextField
+        <PasswordField
           id="password"
           label="Password"
-          type="password"
           autoComplete="new-password"
           help={PASSWORD_HELP}
           error={errors.password?.message}

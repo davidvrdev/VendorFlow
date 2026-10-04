@@ -90,5 +90,8 @@ public class PasswordResetService {
         userTokens.invalidateUnused(user.getId(), UserToken.Purpose.PASSWORD_RESET, now);
         sessions.endAllForUser(user.getId());
         audit.record(null, user.getId(), "user.password_reset", "user", user.getId(), Map.of());
+        // Security notice (ASVS V2.1.6): the owner learns of a reset even if someone else triggered it.
+        outbox.enqueue(NotificationKind.PASSWORD_CHANGED, null, user.getEmail(), "password-changed:" + token.getId(),
+                Map.of("fullName", user.getFullName()));
     }
 }

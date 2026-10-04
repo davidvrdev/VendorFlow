@@ -46,6 +46,13 @@ class ProfileGuardTest {
         env.setProperty("app.base-url", "https://app.vendorflow.example");
         env.setProperty("app.email.provider", "resend");
         env.setProperty("vendorflow.billing.allow-disabled-in-prod", "true");
+        env.setProperty("vendorflow.storage.scanner", "clamav");
+        env.setProperty("app.storage.provider", "s3");
+        env.setProperty("app.storage.s3.endpoint", "https://x.storage.supabase.co/storage/v1/s3");
+        env.setProperty("app.storage.s3.region", "eu-central-1");
+        env.setProperty("app.storage.s3.bucket", "documents");
+        env.setProperty("app.storage.s3.access-key-id", "id");
+        env.setProperty("app.storage.s3.secret-access-key", "secret");
         return env;
     }
 
@@ -140,6 +147,8 @@ class ProfileGuardTest {
         fresh.setProperty("app.base-url", "https://app.example.com");
         fresh.setProperty("app.email.provider", "resend");
         fresh.setProperty("vendorflow.billing.allow-disabled-in-prod", "true");
+        fresh.setProperty("vendorflow.storage.scanner", "clamav");
+        fresh.setProperty("app.storage.allow-filesystem-in-prod", "true");
         assertThatCode(() -> new ProfileGuard(fresh, jdbc(null))).doesNotThrowAnyException();
     }
 
@@ -183,5 +192,40 @@ class ProfileGuardTest {
     void prodDoesNotApplyTheLocalDatabaseRule() {
         assertThatCode(() -> new ProfileGuard(prodEnv(), jdbc("jdbc:postgresql://db.supabase.example:5432/postgres")))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void prodRefusesTheNoOpScannerWithoutExplicitOptIn() {
+        MockEnvironment env = prodEnv();
+        env.setProperty("vendorflow.storage.scanner", "noop");
+        assertThatThrownBy(() -> new ProfileGuard(env, jdbc(null))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("allow-noop-scanner-in-prod");
+        assertThatThrownBy(() -> ProfileGuard.checkScanner("noop", false)).isInstanceOf(IllegalStateException.class);
+        assertThatCode(() -> ProfileGuard.checkScanner("noop", true)).doesNotThrowAnyException();
+        assertThatCode(() -> ProfileGuard.checkScanner("clamav", false)).doesNotThrowAnyException();
+        env.setProperty("vendorflow.storage.allow-noop-scanner-in-prod", "true");
+        assertThatCode(() -> new ProfileGuard(env, jdbc(null))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void prodRefusesFilesystemStorageWithoutExplicitOptIn() {
+        MockEnvironment env = prodEnv();
+        env.setProperty("app.storage.provider", "filesystem");
+        assertThatThrownBy(() -> new ProfileGuard(env, jdbc(null))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("STORAGE_ALLOW_FILESYSTEM_IN_PROD");
+        env.setProperty("app.storage.allow-filesystem-in-prod", "true");
+        assertThatCode(() -> new ProfileGuard(env, jdbc(null))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void prodS3StorageNeedsAllSettingsAndHttps() {
+        MockEnvironment missing = prodEnv();
+        missing.setProperty("app.storage.s3.bucket", "");
+        assertThatThrownBy(() -> new ProfileGuard(missing, jdbc(null))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("STORAGE_S3_BUCKET");
+        MockEnvironment http = prodEnv();
+        http.setProperty("app.storage.s3.endpoint", "http://storage.example");
+        assertThatThrownBy(() -> new ProfileGuard(http, jdbc(null))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("https");
     }
 }

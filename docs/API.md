@@ -37,6 +37,7 @@ Status in this file: **(planned)** until the phase that implements it marks it *
 - `POST /auth/resend-verification` → 204 **(implemented)**
 - `POST /auth/password-reset/request` `{ email }` → 202 (always) **(implemented)**
 - `POST /auth/password-reset/confirm` `{ token, newPassword }` → 204 **(implemented)**
+- `POST /me/password` `{ currentPassword, newPassword }` → 204 **(implemented)**. Session user only (never an id from the body). Wrong current password or locked account: 400 "The current password is incorrect." (counts toward lockout); new password fails policy (12-128 chars, not the email, not in the top-100k list, not equal to the current one): 400 with `errors[].field = newPassword`; rate limit `password-change` 5/min per user: 429. Success revokes all other sessions, rotates this one (new `VF_SESSION` and `XSRF-TOKEN`: the client re-reads the cookie), writes audit `user.password_changed`, and queues a "password changed" email (also sent after a password reset).
 - `GET  /me` → `{ user, activeOrganization: { id, name, role }, organizations: [...] }` **(implemented)**
 - `POST /session/organization` `{ organizationId }` → 200 `Me` (membership verified) **(implemented)**
 

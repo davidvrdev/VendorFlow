@@ -15,9 +15,9 @@ Do not start future phases early. Status: ☐ not started · ◐ in progress · 
 | 6 | Notifications | ☑ | Resend sender (outbox exists since Phase 1); reminder ledger; daily digest; document request; idempotency tests |
 | 7 | CSV | ☑ | Export; import with full validation preview + atomic commit |
 | 8 | Billing | ☑ | Trial; Checkout; Portal; signed + idempotent webhooks; read-only mode when inactive |
-| 9 | Security hardening | ☐ | CSP & headers; rate limits verified; repository-scope architecture test; dependency scanning; OWASP ASVS L1 pass |
-| 10 | E2E / QA | ☐ | Playwright: the 10 critical flows in TESTING.md green in CI |
-| 11 | Production deployment | ☐ | Hosting ADR; containers; migrations in pipeline; secrets; monitoring; backups; runbooks |
+| 9 | Security hardening | ☑ | CSP & headers; rate limits verified; repository-scope architecture test; dependency scanning; OWASP ASVS L1 pass |
+| 10 | E2E / QA | ☑ | Playwright: the 10 critical flows in TESTING.md green in CI |
+| 11 | Production deployment | ◐ | Hosting ADR; containers; migrations in pipeline; secrets; monitoring; backups; runbooks |
 | 12 | Beta | ☐ | 3–5 design partners onboarded; feedback loop |
 | 13 | AI extraction | ☐ | Structured extraction with confidence + human review + provenance |
 | 14 | Vendor portal | ☐ | Tokenized upload links, no vendor account |

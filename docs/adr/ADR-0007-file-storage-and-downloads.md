@@ -14,7 +14,7 @@ Documents are sensitive. Prod target is Supabase Storage (S3-compatible API). Lo
 Option 2 with backend streaming for the MVP. Keys are server-generated `org/{orgId}/doc/{uuid}`; the original filename
 is metadata only. Downloads: authorize → audit → stream with `Content-Disposition: attachment`,
 `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`.
-The S3 implementation will use the AWS SDK v2 S3 client (Apache-2.0; the reliable S3 protocol implementation).
+The S3 implementation uses the AWS SDK v2 S3 client (Apache-2.0; the reliable S3 protocol implementation). **Implemented in Phase 11 (`S3ObjectStorage`), see ADR-0010**: tested against LocalStack (real S3 protocol), uploads are spooled to a temp file (bounded by the 15 MB cap) because S3 needs the exact length.
 
 ## Consequences
 + Authorization and audit on every download; storage never exposed publicly.

@@ -23,7 +23,7 @@ export default defineConfig({
   webServer: {
     command: process.env.E2E_DEV_SERVER ? "npm run dev" : "npm run build && npm run start",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI || !!process.env.E2E_REUSE_SERVER, // CI full-stack job starts the frontend itself
     timeout: 240_000,
   },
 });

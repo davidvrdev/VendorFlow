@@ -9,6 +9,7 @@ import com.vendorflow.document.infrastructure.DocumentRepository;
 import com.vendorflow.document.infrastructure.DocumentTypeRepository;
 import com.vendorflow.document.infrastructure.storage.FileScanner;
 import com.vendorflow.document.infrastructure.storage.ObjectStorage;
+import com.vendorflow.document.infrastructure.storage.ScannerUnavailableException;
 import com.vendorflow.document.infrastructure.storage.StorageKeys;
 import com.vendorflow.organization.application.AuthorizationService;
 import com.vendorflow.shared.tenant.TenantContext;
@@ -191,6 +192,11 @@ public class DocumentUploadService {
             result = scanner.scan(in, kind.mimeType());
         } catch (IOException e) {
             throw new org.springframework.web.multipart.MultipartException("Cannot read upload", e);
+        } catch (ScannerUnavailableException e) {
+            // Fail closed: no verdict means no upload. The cause stays in the log, not in the response.
+            log.error("File scanner unavailable, upload refused: {}", e.getMessage());
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "file-scanning-unavailable",
+                    "File scanning unavailable", "Files cannot be accepted right now. Please try again later.");
         }
         if (!result.clean()) {
             log.warn("Upload rejected by file scanner: reason={}", result.reason());

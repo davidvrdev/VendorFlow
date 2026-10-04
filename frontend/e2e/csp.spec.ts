@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 
 // Runs in mock and full-stack modes: only public pages plus the anonymous redirect, no backend needed.
 const PAGES = ["/", "/login", "/signup", "/forgot-password"];

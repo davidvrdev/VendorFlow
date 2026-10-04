@@ -1,25 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { inviteAccountSchema, resetPasswordSchema, signupSchema } from "./schemas";
+import { changePasswordSchema, inviteAccountSchema, resetPasswordSchema, signupSchema } from "./schemas";
 import { organizationFormSchema } from "@/features/organization/schemas";
 
 // Built from code points so the test file itself contains no invisible characters.
 const BIDI_OVERRIDE = String.fromCharCode(0x202e);
 const NUL = String.fromCharCode(0);
 
-describe("password byte limit (bcrypt, 72 UTF-8 bytes) on every new-password form", () => {
-  const twoByte = "ñ".repeat(40); // 40 characters, 80 bytes
+describe("password length (12 to 128 characters, no byte cap since Argon2id)", () => {
+  const nonAscii = "ñ".repeat(64);
   it("applies to reset-password", () => {
     const ok = (p: string) => resetPasswordSchema.safeParse({ newPassword: p, confirmPassword: p }).success;
-    expect(ok("x".repeat(72))).toBe(true);
-    expect(ok("x".repeat(73))).toBe(false);
-    expect(ok(twoByte)).toBe(false);
+    expect(ok("x".repeat(128))).toBe(true);
+    expect(ok("x".repeat(129))).toBe(false);
+    expect(ok(nonAscii)).toBe(true);
     expect(ok("x".repeat(11))).toBe(false);
   });
   it("applies to the invite-accept new-account form", () => {
     const ok = (p: string) => inviteAccountSchema.safeParse({ fullName: "Sam", password: p }).success;
-    expect(ok("x".repeat(72))).toBe(true);
-    expect(ok("x".repeat(73))).toBe(false);
-    expect(ok(twoByte)).toBe(false);
+    expect(ok("x".repeat(128))).toBe(true);
+    expect(ok("x".repeat(129))).toBe(false);
+  });
+  it("change-password validates all three fields", () => {
+    const base = { currentPassword: "old", newPassword: "x".repeat(14), confirmPassword: "x".repeat(14) };
+    expect(changePasswordSchema.safeParse(base).success).toBe(true);
+    expect(changePasswordSchema.safeParse({ ...base, currentPassword: "" }).success).toBe(false);
+    expect(changePasswordSchema.safeParse({ ...base, confirmPassword: "y".repeat(14) }).success).toBe(false);
+    expect(changePasswordSchema.safeParse({ ...base, newPassword: "x".repeat(129), confirmPassword: "x".repeat(129) }).success).toBe(false);
   });
   it("reset-password requires matching confirmation", () => {
     const result = resetPasswordSchema.safeParse({ newPassword: "x".repeat(14), confirmPassword: "y".repeat(14) });

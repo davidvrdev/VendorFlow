@@ -7,6 +7,8 @@ app:
     ip-hash-secret: test-only-ip-hash-secret
     # Speed only: production uses 12 (see application.yml).
     bcrypt-strength: 4
+    argon2-memory-kib: 1024
+    argon2-iterations: 1
   documents:
     org-quota: 40MB
   reminders:

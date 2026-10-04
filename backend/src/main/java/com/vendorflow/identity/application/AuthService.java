@@ -22,7 +22,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -38,7 +37,7 @@ public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final AppUserRepository users;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordVerifier passwordVerifier;
     private final LoginAttemptService loginAttempts;
     private final AccountRegistrationService registration;
     private final SessionService sessions;
@@ -51,12 +50,12 @@ public class AuthService {
     /** Verified against when the email is unknown, so "no such user" costs the same bcrypt time as "wrong password". */
     private final String dummyHash;
 
-    public AuthService(AppUserRepository users, PasswordEncoder passwordEncoder, LoginAttemptService loginAttempts,
+    public AuthService(AppUserRepository users, PasswordVerifier passwordVerifier, LoginAttemptService loginAttempts,
             AccountRegistrationService registration, SessionService sessions, OrganizationService organizations,
             MeService meService, AuditService audit, TenantContext tenantContext,
             PlatformTransactionManager transactionManager, Clock clock) {
         this.users = users;
-        this.passwordEncoder = passwordEncoder;
+        this.passwordVerifier = passwordVerifier;
         this.loginAttempts = loginAttempts;
         this.registration = registration;
         this.sessions = sessions;
@@ -66,15 +65,14 @@ public class AuthService {
         this.tenantContext = tenantContext;
         this.tx = new TransactionTemplate(transactionManager);
         this.clock = clock;
-        this.dummyHash = passwordEncoder.encode("timing-equalization-dummy-password");
+        this.dummyHash = passwordVerifier.encode("timing-equalization-dummy-password");
     }
 
     public Me login(LoginRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         Optional<AppUser> found = users.findByEmailIgnoreCase(request.email().trim());
-        // Always run exactly one bcrypt verification, whatever the outcome (timing equalization).
-        boolean fits = fitsBcrypt(request.password());
-        boolean passwordMatches = passwordEncoder.matches(fits ? request.password() : "x",
-                found.map(AppUser::getPasswordHash).orElse(dummyHash)) && fits;
+        // Always run exactly one hash verification, whatever the outcome (timing equalization).
+        boolean passwordMatches = passwordVerifier.matches(request.password(),
+                found.map(AppUser::getPasswordHash).orElse(dummyHash));
 
         if (found.isEmpty()) {
             log.warn("Login failed: unknown account");
@@ -97,6 +95,7 @@ public class AuthService {
             log.warn("Login rejected: account locked userId={}", user.getId());
             throw invalidCredentials();
         }
+        upgradeLegacyHash(user, request.password());
         UUID activeOrganizationId = organizations
                 .resolveActiveOrganization(user.getId(), user.getLastActiveOrganizationId()).orElse(null);
         sessions.start(user.getId(), activeOrganizationId, httpRequest, httpResponse);
@@ -133,9 +132,22 @@ public class AuthService {
         return meService.build(userId, target.id());
     }
 
-    /** Passwords over 72 bytes can never have been set (signup rejects them); bcrypt would throw on them. */
-    private static boolean fitsBcrypt(String password) {
-        return password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= PasswordPolicy.MAX_BYTES;
+    /**
+     * bcrypt -> Argon2id on the first successful login (the only moment the plaintext is available). Best effort: a
+     * failure here must not fail a login that already succeeded; the next login simply tries again.
+     */
+    private void upgradeLegacyHash(AppUser user, String rawPassword) {
+        if (!passwordVerifier.needsUpgrade(user.getPasswordHash())) {
+            return;
+        }
+        try {
+            String upgraded = passwordVerifier.encode(rawPassword);
+            tx.executeWithoutResult(s -> users.findById(user.getId())
+                    .ifPresent(u -> u.rehashPassword(upgraded, clock.instant())));
+            log.info("Password hash upgraded: userId={}", user.getId());
+        } catch (RuntimeException e) {
+            log.warn("Password hash upgrade failed: userId={}", user.getId());
+        }
     }
 
     private static ApiException invalidCredentials() {

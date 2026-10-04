@@ -22,6 +22,8 @@ import org.springframework.stereotype.Component;
  *       non-Secure session cookie, a non-https {@code app.base-url} (links in emails), or {@code app.email.provider}
  *       other than {@code resend} (the logging sender delivers nothing).</li>
  *   <li>{@code prod} with billing enabled but a Stripe key, webhook secret or price id missing (checkBilling).</li>
+ *   <li>{@code prod} with the no-op malware scanner without the explicit opt-in (checkScanner).</li>
+ *   <li>{@code prod} without S3 storage (or the explicit filesystem opt-in), see checkStorage.</li>
  *   <li>NOT {@code prod} while the database host is not local: the default profile is {@code local}, so a deployment
  *       that forgets {@code SPRING_PROFILES_ACTIVE=prod} would otherwise run with local settings against a real
  *       database. Opt in explicitly with {@code app.allow-non-local-db-without-prod=true} (tests/staging).</li>
@@ -51,6 +53,15 @@ public class ProfileGuard {
                     environment.getProperty("vendorflow.billing.stripe.secret-key"),
                     environment.getProperty("vendorflow.billing.stripe.webhook-secret"),
                     environment.getProperty("vendorflow.billing.stripe.price-id"));
+            checkScanner(environment.getProperty("vendorflow.storage.scanner", "noop"),
+                    environment.getProperty("vendorflow.storage.allow-noop-scanner-in-prod", Boolean.class, false));
+            checkStorage(environment.getProperty("app.storage.provider", "filesystem"),
+                    environment.getProperty("app.storage.allow-filesystem-in-prod", Boolean.class, false),
+                    environment.getProperty("app.storage.s3.endpoint"),
+                    environment.getProperty("app.storage.s3.region"),
+                    environment.getProperty("app.storage.s3.bucket"),
+                    environment.getProperty("app.storage.s3.access-key-id"),
+                    environment.getProperty("app.storage.s3.secret-access-key"));
         } else {
             JdbcConnectionDetails details = jdbcDetails.getIfAvailable();
             checkDatabaseHost(details == null ? null : details.getJdbcUrl(),
@@ -121,6 +132,46 @@ public class ProfileGuard {
                 throw new IllegalStateException("Profile 'prod': STRIPE_WEBHOOK_SECRET must start with whsec_.");
             }
         }
+    }
+
+    /**
+     * Prod must scan uploads (ASVS V12.4.2): the no-op scanner needs the explicit opt-in
+     * {@code vendorflow.storage.allow-noop-scanner-in-prod=true}.
+     */
+    public static void checkScanner(String scanner, boolean allowNoopInProd) {
+        if (!"clamav".equalsIgnoreCase(scanner) && !allowNoopInProd) {
+            throw new IllegalStateException("Profile 'prod': vendorflow.storage.scanner must be 'clamav' (uploads would "
+                    + "otherwise not be scanned for malware). Opt out explicitly with "
+                    + "vendorflow.storage.allow-noop-scanner-in-prod=true.");
+        }
+    }
+
+    /**
+     * Prod must keep documents off the container's ephemeral disk (they would vanish on every deploy): provider
+     * {@code s3} with all five settings, or the explicit opt-in {@code app.storage.allow-filesystem-in-prod=true}
+     * (single host with a persistent volume). Messages name variables, never values.
+     */
+    public static void checkStorage(String provider, boolean allowFilesystemInProd, String endpoint, String region,
+            String bucket, String accessKeyId, String secretAccessKey) {
+        if ("s3".equalsIgnoreCase(provider)) {
+            if (isBlank(endpoint) || isBlank(region) || isBlank(bucket) || isBlank(accessKeyId)
+                    || isBlank(secretAccessKey)) {
+                throw new IllegalStateException("Profile 'prod': STORAGE_PROVIDER=s3 needs STORAGE_S3_ENDPOINT, "
+                        + "STORAGE_S3_REGION, STORAGE_S3_BUCKET, STORAGE_S3_ACCESS_KEY_ID and "
+                        + "STORAGE_S3_SECRET_ACCESS_KEY.");
+            }
+            if (!endpoint.toLowerCase(Locale.ROOT).startsWith("https://")) {
+                throw new IllegalStateException("Profile 'prod': STORAGE_S3_ENDPOINT must be an https:// URL.");
+            }
+            return;
+        }
+        if (!allowFilesystemInProd) {
+            throw new IllegalStateException("Profile 'prod': app.storage.provider must be 's3' (the container disk is "
+                    + "ephemeral and documents would be lost on deploy). Opt in explicitly with "
+                    + "STORAGE_ALLOW_FILESYSTEM_IN_PROD=true only if a persistent volume is mounted.");
+        }
+        LoggerFactory.getLogger(ProfileGuard.class).warn("FILESYSTEM STORAGE IN PROD (STORAGE_ALLOW_FILESYSTEM_IN_PROD="
+                + "true): make sure STORAGE_FILESYSTEM_ROOT is a persistent, backed-up volume.");
     }
 
     private static boolean isBlank(String value) {

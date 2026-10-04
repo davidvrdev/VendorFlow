@@ -14,6 +14,7 @@ import { loginSchema, type LoginValues } from "@/features/auth/schemas";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import { applyApiError } from "@/lib/forms/api-errors";
 import { AuthCard } from "./auth-card";
+import { PasswordField } from "./password-field";
 
 export function LoginForm({ next, passwordReset = false }: { next?: string | null; passwordReset?: boolean }) {
   const router = useRouter();
@@ -78,10 +79,9 @@ export function LoginForm({ next, passwordReset = false }: { next?: string | nul
           error={errors.email?.message}
           {...register("email")}
         />
-        <TextField
+        <PasswordField
           id="password"
           label="Password"
-          type="password"
           autoComplete="current-password"
           error={errors.password?.message}
           {...register("password")}

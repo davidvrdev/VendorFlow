@@ -26,3 +26,11 @@ app:
   reminders:
     # The scheduled job stays off: E2E triggers it explicitly via POST /api/test/reminders/run (deterministic).
     enabled: false
+vendorflow:
+  billing:
+    # Billing ON so the read-only guard and the webhook endpoint are live. The secret is a FAKE fixed value shared with
+    # frontend/e2e/billing.spec.ts; there is no Stripe API key/price, so Checkout/Portal still answer 503, and the Stripe
+    # API itself is replaced by E2eBillingGateway. e2e can never run with prod (ProfileGuard).
+    enabled: true
+    stripe:
+      webhook-secret: whsec_e2e_fake_not_a_real_secret

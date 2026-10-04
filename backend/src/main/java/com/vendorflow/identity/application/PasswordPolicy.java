@@ -14,7 +14,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
- * NIST 800-63B style: length 12 to 128, not the account email, not in a list of very common passwords. No
+ * NIST 800-63B style: length 12 to 128 characters (Argon2id has no 72-byte limit), not the account email, not in the
+ * top-100k common/breached list (security/common-passwords.txt, see DECISIONS.md). No
  * composition rules (they push users to predictable patterns). Comparison is case-insensitive.
  */
 @Component
@@ -22,8 +23,8 @@ public class PasswordPolicy {
 
     public static final int MIN_LENGTH = 12;
     public static final int MAX_LENGTH = 128;
-    /** bcrypt ignores/rejects input beyond 72 bytes (Spring Security throws), so we reject it up front. */
-    public static final int MAX_BYTES = 72;
+    /** Hashes created before the Argon2id migration are bcrypt, which cannot take more than 72 bytes (see AuthService). */
+    public static final int BCRYPT_MAX_BYTES = 72;
 
     private final Set<String> common;
 
@@ -40,9 +41,6 @@ public class PasswordPolicy {
     public void validate(String password, String email, String field) {
         if (password == null || password.length() < MIN_LENGTH || password.length() > MAX_LENGTH) {
             throw violation(field, "must be between " + MIN_LENGTH + " and " + MAX_LENGTH + " characters");
-        }
-        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) {
-            throw violation(field, "must be at most " + MAX_BYTES + " bytes (bcrypt limit; non-ASCII characters use several bytes)");
         }
         String lower = password.toLowerCase(Locale.ROOT);
         if (email != null && lower.equals(email.trim().toLowerCase(Locale.ROOT))) {

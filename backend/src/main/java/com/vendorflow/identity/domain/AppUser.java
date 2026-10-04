@@ -113,4 +113,10 @@ public class AppUser extends UuidEntity {
         this.lockedUntil = null;
         this.updatedAt = now;
     }
+
+    /** Same password, stronger hash (bcrypt -> Argon2id after a successful login). Does not touch the lockout state. */
+    public void rehashPassword(String newPasswordHash, Instant now) {
+        this.passwordHash = newPasswordHash;
+        this.updatedAt = now;
+    }
 }

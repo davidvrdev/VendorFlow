@@ -94,3 +94,16 @@ curl "http://localhost:8080/api/test/mailbox?to=jane@example.com"
 - To send through Resend locally: `EMAIL_PROVIDER=resend RESEND_API_KEY=re_... EMAIL_FROM="VendorFlow <notifications@your-verified-domain>"` (the domain must be verified in Resend; the key is never logged or committed). Missing key/from = startup failure. Prod refuses `logging`.
 - **Real sending is unverified until the owner provides a Resend API key and a verified sending domain**; the behavior is covered by mock-server tests (`ResendEmailSenderTest`, `ResendDispatchTest`) built from Resend's official docs.
 - Reminder job: `app.reminders.enabled` (default true; false in the test and e2e profiles). Under `local,e2e`, `POST /api/test/reminders/run` (logged in, loopback only) runs it now for the active org; digests and document requests land in the e2e mailbox (`/api/test/mailbox?to=...` now also returns `text` and `replyTo`).
+
+## Malware scanning with ClamAV (optional locally, required in prod)
+Uploads go through the `FileScanner` hook. Default `STORAGE_SCANNER=noop` (accepts everything; prod refuses it unless
+`STORAGE_ALLOW_NOOP_SCANNER_IN_PROD=true`). To scan locally:
+```bash
+docker compose --profile scan up -d clamav     # not started by default; first start downloads signatures (minutes)
+# wait until healthy: docker compose ps
+STORAGE_SCANNER=clamav CLAMAV_HOST=localhost CLAMAV_PORT=3310 ./mvnw spring-boot:run
+```
+The container sets clamd `StreamMaxLength`/`MaxFileSize` to 16M (>= the 15 MB upload cap). Behaviour: infected -> 422
+"File rejected" (signature name only in the server log); clamd unreachable/timeout/error -> 503 "File scanning
+unavailable" (fail closed). Quick check: upload the EICAR test string saved as a `.pdf` starting with `%PDF-`.
+In production run clamd as a separate service reachable only from the API and keep its signatures updated (freshclam).

@@ -11,7 +11,7 @@ describe("settingsNavItems", () => {
     expect(labels("VIEWER")).not.toContain("Email activity");
     expect(labels(null)).not.toContain("Email activity");
   });
-  it("always lists Organization and Members", () => {
-    expect(labels("VIEWER")).toEqual(["Organization", "Members", "Billing"]);
+  it("always lists Organization, Members and Account", () => {
+    expect(labels("VIEWER")).toEqual(["Organization", "Members", "Account", "Billing"]);
   });
 });

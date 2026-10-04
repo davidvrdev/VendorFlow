@@ -16,11 +16,9 @@ export const NAME_CHARS_MESSAGE = "Remove special control characters.";
 const newPassword = z
   .string()
   .min(12, "Password must be at least 12 characters.")
-  .max(128, "Password must be 128 characters or fewer.")
-  // bcrypt only uses the first 72 bytes, so the backend rejects longer passwords (UTF-8 bytes, not characters).
-  .refine((value) => new TextEncoder().encode(value).length <= 72, "Password is too long (maximum 72 bytes).");
+  .max(128, "Password must be 128 characters or fewer.");
 
-export const PASSWORD_HELP = "At least 12 characters. A long passphrase works well.";
+export const PASSWORD_HELP = "Use 12 to 128 characters. A long passphrase works well.";
 
 export const loginSchema = z.object({
   email,
@@ -62,3 +60,15 @@ export const inviteAccountSchema = z.object({
   password: newPassword,
 });
 export type InviteAccountValues = z.infer<typeof inviteAccountSchema>;
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password.").max(128, "Password must be 128 characters or fewer."),
+    newPassword,
+    confirmPassword: z.string().min(1, "Confirm your new password."),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match.",
+  });
+export type ChangePasswordValues = z.infer<typeof changePasswordSchema>;

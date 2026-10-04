@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { FormAlert } from "@/components/forms/form-alert";
-import { TextField } from "@/components/forms/field";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { confirmPasswordReset } from "@/features/auth/api";
 import { PASSWORD_HELP, resetPasswordSchema, type ResetPasswordValues } from "@/features/auth/schemas";
@@ -14,6 +13,7 @@ import { ApiError } from "@/lib/api/errors";
 import { useHashToken } from "@/lib/auth/hash-token";
 import { applyApiError } from "@/lib/forms/api-errors";
 import { AuthCard } from "./auth-card";
+import { PasswordField } from "./password-field";
 
 const requestNewLink = (
   <Link href="/forgot-password" className="font-medium underline underline-offset-4">
@@ -73,19 +73,17 @@ export function ResetPasswordForm() {
     <AuthCard title="Choose a new password" description="You will be signed out everywhere else after changing it.">
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="grid gap-4">
         <FormAlert message={formError} />
-        <TextField
+        <PasswordField
           id="newPassword"
           label="New password"
-          type="password"
           autoComplete="new-password"
           help={PASSWORD_HELP}
           error={errors.newPassword?.message}
           {...register("newPassword")}
         />
-        <TextField
+        <PasswordField
           id="confirmPassword"
           label="Confirm new password"
-          type="password"
           autoComplete="new-password"
           error={errors.confirmPassword?.message}
           {...register("confirmPassword")}

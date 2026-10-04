@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { smallPdf } from "./support/files";
 import { openVerificationLink, signUp, uniqueUser } from "./support/flows";
 import { latestLink, waitForMessage } from "./support/mailbox";

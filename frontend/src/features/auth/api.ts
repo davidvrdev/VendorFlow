@@ -24,3 +24,6 @@ export const fetchMe = () => apiFetch<Me>("/me");
 
 export const switchOrganization = (organizationId: string) =>
   apiFetch<Me>("/session/organization", { method: "POST", json: { organizationId } });
+
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  apiFetch<void>("/me/password", { method: "POST", json: { currentPassword, newPassword } });

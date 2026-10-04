@@ -10,12 +10,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
 - Frontend foundation: Next.js 16, Tailwind 4, shadcn/ui, API client with CSRF header + safe error parsing,
   compliance status badge, app shell, Vitest + Playwright.
 - GitHub Actions CI workflow (backend verify; frontend lint/typecheck/test/build/e2e smoke).
+- Phase 11 deployment preparation (ADR-0010): `S3ObjectStorage` (AWS SDK v2, Supabase Storage S3, tested against a real S3 protocol endpoint), `app.storage.provider=filesystem|s3` with a ProfileGuard rule (prod refuses filesystem without opt-in), production Dockerfiles (backend hardened, frontend standalone, ClamAV), `render.yaml` Blueprint (Frankfurt; public web, private api + clamav), CI `docker-build` and `deploy` (Render hooks) jobs, `scripts/backup-db.sh`, `/healthz` on the frontend, migration V10 (revoke Supabase API roles), graceful shutdown and log levels in `application-prod.yml`, `DEPLOYMENT.md` and `RUNBOOKS.md`.
 - **Phase 1 — Authentication & Organizations**: signup (creates organization + owner), login/logout with
   server-side sessions in Postgres, CSRF, email verification, password reset (revokes all sessions), account
   lockout, rate limiting, 7-day absolute session lifetime, multi-organization membership with switching,
   roles OWNER/ADMIN/MEMBER/VIEWER enforced server-side, members management (last-owner invariant), invitations,
   organization settings, audit events, transactional email outbox. UI for all of it. Full-stack E2E suite
   (13 flows) using an e2e-profile test mailbox.
+
+- **Phase 9 — Security hardening**: ArchUnit architecture rules (repository scoping, no entities in API, cycle
+  ratchet), endpoint inventory test (auth + CSRF on every endpoint), API + page security headers, per-request nonce CSP,
+  rate-limit coverage test, OSV dependency scan + opt-in OWASP profile, Tomcat/Jackson CVE bumps. OWASP ASVS L1
+  walkthrough; all FAILs fixed: ClamAV scanning (fail closed), change password, top-100k common-password list,
+  Argon2id with bcrypt upgrade-on-login, `__Host-` session cookie, show/hide password toggles.
+- **Phase 10 — E2E / QA**: the 10 critical flows traced to Playwright specs (incl. signed Stripe webhook against an
+  e2e-only gateway stub), global fixture failing on CSP violations / page errors (found and fixed Radix style
+  injections), cold-start flake fixed, full-stack E2E job in CI.
 
 - **Phase 8 — Billing**: per-organization subscription (14-day trial), Stripe Checkout + Customer Portal,
   signed idempotent webhooks (re-fetch from Stripe, converge out of order), read-only mode (402) when inactive,

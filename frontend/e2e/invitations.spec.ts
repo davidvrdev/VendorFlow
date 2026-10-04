@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import { BANNER_TEXT, openVerificationLink, PASSWORD, signUp, uniqueUser } from "./support/flows";
 import { latestLink } from "./support/mailbox";
 
@@ -41,7 +41,7 @@ test("owner invites a member; invitee creates an account, sees read-only members
   await expect(invitee).toHaveURL(/\/invite$/); // fragment stripped
   await invitee.waitForLoadState("networkidle");
   await invitee.getByLabel("Full name").fill("Nina Newcomer");
-  await invitee.getByLabel("Password").fill(PASSWORD);
+  await invitee.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await invitee.getByRole("button", { name: "Create account and join" }).click();
   await expect(invitee).toHaveURL(/\/dashboard$/);
   await expect(invitee.getByTestId("active-org")).toContainText(owner.orgName);

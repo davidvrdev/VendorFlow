@@ -15,13 +15,20 @@ RUN ./mvnw -B -q -DskipTests package \
 FROM eclipse-temurin:21-jre
 RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --no-create-home app
 WORKDIR /app
+# Layer order = change frequency (dependencies rarely change, application code every build).
 COPY --from=build --chown=app:app /workspace/target/extracted/dependencies/ ./
 COPY --from=build --chown=app:app /workspace/target/extracted/spring-boot-loader/ ./
 COPY --from=build --chown=app:app /workspace/target/extracted/snapshot-dependencies/ ./
 COPY --from=build --chown=app:app /workspace/target/extracted/application/ ./
 USER app
-# No secrets here: DATABASE_URL / DATABASE_USERNAME / DATABASE_PASSWORD are injected at runtime.
+# No secrets here: DATABASE_URL / DATABASE_USERNAME / DATABASE_PASSWORD etc. are injected at runtime.
+# Container-aware heap (75% of the memory limit leaves room for metaspace, threads and the TLS/S3 buffers),
+# die on OOM so the platform restarts us instead of leaving a half-dead JVM, no stack-trace-less fast throws.
 ENV SPRING_PROFILES_ACTIVE=prod \
-    JAVA_OPTS=""
+    JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/urandom"
 EXPOSE 8080
+# Readiness probe (application state). Generous start period: Flyway migrations run on startup.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/actuator/health/readiness || exit 1
+# exec so the JVM is PID 1 and receives SIGTERM (graceful shutdown).
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar vendorflow-api.jar"]

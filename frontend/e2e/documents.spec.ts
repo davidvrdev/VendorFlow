@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { fakePdf, largePdf, smallPdf, smallPng, type UploadFile } from "./support/files";
 import { signUp, uniqueUser } from "./support/flows";
 
