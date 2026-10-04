@@ -108,7 +108,8 @@ Rules:
   account is created with `emailVerified=true` (the token proves mailbox ownership) and a session starts. If no session
   and the account exists: **409** `title: "Sign in to accept"`.
 - Rate limits (per client IP, in-process): login 10/min, signup 5/min, password-reset request 5/min,
-  invitation lookup/accept 20/min, resend-verification 3/min, token redemption (`verify-email` + `password-reset/confirm`, shared) 20/min → **429** with `Retry-After`.
+  invitation lookup/accept 20/min, resend-verification 3/min, token redemption (`verify-email` + `password-reset/confirm`, shared) 20/min → **429** with `Retry-After`; **413** `.../file-too-large` when the declared `Content-Length` exceeds the multipart request limit (17 MB).
+  A servlet filter (`PortalUploadGuardFilter`) answers the 404 (missing / not 43-char base64url / unknown / unusable token) and the 413 BEFORE the multipart body is parsed, so nothing is buffered or written for a bad request; Tomcat `max-part-count` = 10.
 
 **Implemented in Phase 1 / B1 (auth, session, org settings) — exact client flow and details:**
 1. App start / before the first unsafe request: if there is no `XSRF-TOKEN` cookie, `GET /api/v1/auth/csrf` (204; sets
@@ -258,7 +259,7 @@ Rules:
 ### Phase 3 contract details (authoritative for backend + frontend)
 ```ts
 type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED";
-type DocumentState = "CURRENT" | "SUPERSEDED" | "ARCHIVED";
+type DocumentState = "CURRENT" | "CANDIDATE" | "SUPERSEDED" | "ARCHIVED";   // CANDIDATE: Phase 14 portal upload awaiting review
 type DocumentSummary = { id: string; vendorId: string; documentType: { id: string; code: string; name: string;
   hasExpiration: boolean }; state: DocumentState; reviewStatus: ReviewStatus; issueDate: string | null;   // yyyy-MM-dd
   expirationDate: string | null; originalFilename: string; mimeType: string; sizeBytes: number;
@@ -270,7 +271,7 @@ type DocumentTypeAdmin = DocumentType & { active: boolean };          // GET /do
 ```
 Endpoints:
 - `POST /vendors/{vendorId}/documents` multipart: `file`, `documentTypeId`, `issueDate?`, `expirationDate?` → 201 `DocumentSummary`
-- `GET  /vendors/{vendorId}/documents?includeHistory=false|true` → `DocumentSummary[]` (CURRENT only by default;
+- `GET  /vendors/{vendorId}/documents?includeHistory=false|true` → `DocumentSummary[]` (CURRENT, plus the CANDIDATE awaiting review if any, by default;
   history adds SUPERSEDED + ARCHIVED; ordered by type sortOrder, then uploadedAt desc). Bounded: ≤ 500 rows.
 - `GET  /documents/{id}` → `DocumentSummary`
 - `PATCH /documents/{id}` `{ issueDate?, expirationDate? }` (explicit `null` clears issueDate; expirationDate cannot be
@@ -304,7 +305,8 @@ Rules:
   transaction fails the object is deleted (best effort, logged). SHA-256 computed while streaming.
 - A new upload for (vendor, type) supersedes the CURRENT one in the same transaction (vendor row locked
   `FOR UPDATE` to serialize concurrent uploads; partial unique index is the backstop). New docs start `PENDING`.
-- Review: only CURRENT documents (else 409 "Document is not current"). `REJECTED` requires a note (1–1000 chars).
+- Review: only CURRENT or CANDIDATE documents (else 409 "Document is not current"). Approving a CANDIDATE supersedes the old CURRENT document and promotes the candidate in one transaction (audit `document.superseded` with `source`); rejecting it (note required) leaves the old one CURRENT and archives the candidate. A candidate cannot have its dates edited.
+  `VendorDetail.requirements[].pendingReplacement: DocumentSummary | null` = the candidate; status/summary are computed from `currentDocument` only. `REJECTED` requires a note (1–1000 chars).
 - Archive: CURRENT or SUPERSEDED → ARCHIVED (idempotent); archiving the CURRENT doc does not promote an older one.
 - PATCH dates on SUPERSEDED/ARCHIVED documents → 409. Changing dates does not change review status; audited.
 - Download: authorization → audit `document.downloaded` → stream with `Content-Type` = stored mime,
@@ -661,3 +663,46 @@ Billing always concerns the caller's ACTIVE organization (from `TenantContext`; 
   `402 { type: ".../problems/subscription-inactive", title: "Subscription inactive", status: 402, detail, requestId }` (one MVC interceptor, `ReadOnlyGuardInterceptor`, runs before the controller, so also before body validation and role checks).
   Always allowed: all GETs (lists, downloads, CSV export/template), `/auth/**`, `/billing/**`, `/webhooks/**`, `/session/**` (switch organization), `/invitations/**` (accept), `/me/**`, and `DELETE /organization/members/{id}` (leave/offboard).
   Requests without an active organization are not blocked by this guard. Scheduled reminders/digests skip read-only organizations (they resume when it is active again).
+
+### Vendor portal (Phase 14) **(implemented, backend)** — ADR-0011
+Vendors upload through a link; no vendor account. Staff create and revoke links; the public endpoints below take the raw token in the request header `X-Portal-Token` (never in the URL, so it cannot reach proxy/platform access logs). A missing or malformed header is the same 404 as an unknown token; a token in a query string or path segment is ignored.
+
+**Staff endpoints** (session + CSRF as usual; tenant from the session; a vendor/link of another organization is 404):
+- `POST /vendors/{vendorId}/upload-links` — `CONTENT_WRITE` (MEMBER+; VIEWER 403). Body
+  `{ documentTypeIds: uuid[1..20], expiresInDays?: 1..30 (default 14), maxUploads?: 1..50 (default 20), maxTotalMb?: 1..500 (default 100; total bytes the link may upload), sendEmail?: boolean (default false) }` → **201**
+  `{ link: UploadLink, url: string, emailQueued: boolean }`. `url` = `{APP_BASE_URL}/portal#token=<raw token>` and is the ONLY time the raw token is ever returned
+  (response is `no-store`; it is not stored, audited or logged; lost link = create a new one). Rules: every id must be an ACTIVE document type that is a requirement of this vendor, else 400
+  `errors[].field = documentTypeIds`; vendor must be ACTIVE (422 `vendor-inactive`); `sendEmail=true` needs a vendor email (422 `vendor-no-email`) and queues the existing `DOCUMENT_REQUEST` email with the portal link
+  (idempotency key `portallink:{linkId}`). Rate limit `portal-link-create-user` 30/min per user. Audit `portal_link.created` (entity `vendor_upload_link`; metadata vendorId, documentTypeIds, expiresAt, maxUploads, emailed; never the token).
+- `GET /vendors/{vendorId}/upload-links?page=0&size=25` — `DATA_VIEW` (VIEWER+) → page of `UploadLink`, newest first.
+- `POST /vendors/{vendorId}/upload-links/{linkId}/revoke` — `CONTENT_WRITE` → 200 `UploadLink`. Idempotent (a second revoke returns the same link and writes no second audit row).
+  Works while the organization is read-only (security action, excluded from the 402 guard like member removal). Audit `portal_link.revoked`.
+```ts
+type UploadLink = { id: string; vendorId: string; documentTypes: { id: string; name: string }[];
+  status: "ACTIVE" | "EXPIRED" | "REVOKED" | "EXHAUSTED";   // precedence: REVOKED > EXPIRED > EXHAUSTED > ACTIVE
+  createdBy: { fullName: string } | null; createdAt: string; expiresAt: string; revokedAt: string | null;
+  lastUsedAt: string | null; useCount: number; maxUploads: number;
+  maxTotalBytes: number; usedBytes: number };
+```
+
+**Public endpoints** (exactly `GET /portal/link` and `POST /portal/link/documents`; no session, no cookies read; CSRF-exempt only for the upload POST; `Cache-Control: no-store`, `Referrer-Policy: no-referrer`):
+- `GET /portal/link` (header `X-Portal-Token: <raw token>`) → 200
+  ```ts
+  type PortalInfo = { organizationName: string; vendorName: string; expiresAt: string; remainingUploads: number;
+    acceptingUploads: boolean;   // false while the organization is read-only (subscription inactive) or remainingUploads is 0
+    documentTypes: { id: string; name: string; hasExpiration: boolean;
+      status: "MISSING" | "OK" | "EXPIRING" | "EXPIRED" | "REVIEW_REQUIRED"; expirationDate: string | null }[] };
+  ```
+  Nothing else is exposed (no ids of organization/vendor, no other vendors/types/documents/staff). `REVIEW_REQUIRED` = received, waiting for staff approval.
+- `POST /portal/link/documents` (header `X-Portal-Token`) multipart `file`, `documentTypeId`, `issueDate?`, `expirationDate?` → **201**
+  `PortalUploadResult = { documentType: { id, name }, originalFilename, status: "PENDING_REVIEW", uploadedAt, remainingUploads }`.
+  Same pipeline and validation order as the staff upload (413 size/quota, 415 extension/magic bytes, 400 type/dates, 422 `file-rejected`, 503 scanner unavailable = fail closed); `documentTypeId` must be in the link's set and still a requirement of the vendor, else 400 `errors[].field = documentTypeId`.
+  The document is review `PENDING`, `source = PORTAL`, no uploader user; a vendor cannot approve. Audit `document.uploaded` (metadata `source: "PORTAL"`, `linkId`).
+  **Never displaces an approved document (M1):** if the requirement's CURRENT document is `APPROVED` and not expired, the upload is stored as state `CANDIDATE` (audit metadata `candidate: true`): the approved document stays CURRENT and keeps counting for compliance, the vendor still receives `PENDING_REVIEW`. Otherwise (no current, `PENDING`, `REJECTED`, or approved-but-expired) the new document becomes CURRENT and supersedes the old one as for any upload (audit `document.superseded` with `source: "PORTAL"`). A newer upload (portal or staff) supersedes a pending candidate: at most one candidate per (vendor, type).
+- Errors: **404** `type .../portal-link-invalid`, detail "This link is invalid or has expired." for unknown, malformed, expired, revoked links AND links of inactive vendors (identical body apart from requestId/instance);
+  **402** `.../portal-uploads-unavailable` (organization read-only; GET still works); **422** `.../portal-upload-limit` (the link's `maxUploads` or its byte budget `maxTotalBytes` is spent); **429** with `Retry-After`; **413** `.../file-too-large` when the declared `Content-Length` exceeds the multipart request limit (17 MB).
+  A servlet filter (`PortalUploadGuardFilter`) answers the 404 (missing / not 43-char base64url / unknown / unusable token) and the 413 BEFORE the multipart body is parsed, so nothing is buffered or written for a bad request; Tomcat `max-part-count` = 10.
+- Rate limits: per IP `portal-view` (GET) 60/min, `portal-upload` (POST) 20/min; per link `portal-link` 60/min (GET+POST together) and `portal-link-upload` 10/min (upload ATTEMPTS, successful or not, counted once the token validated).
+- Staff e-mail: each upload enqueues `PORTAL_UPLOAD` to every verified OWNER/ADMIN, at most one per recipient per link per UTC day.
+- `DocumentSummary` (staff API) gains `source: "STAFF" | "PORTAL"`; `uploadedBy` is `null` for portal uploads.
+- Frontend (later task): public page `/portal` reads `location.hash` (`#token=...`), clears it with `history.replaceState`, calls the endpoints above; the vendor detail page gets "Send upload link" + link list.

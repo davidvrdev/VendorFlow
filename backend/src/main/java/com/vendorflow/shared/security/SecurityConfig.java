@@ -23,6 +23,7 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.savedrequest.NullRequestCache;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 /**
  * Deny-by-default security for a JSON API with server-side sessions (ADR-0002).
@@ -64,7 +65,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/password-reset/**").permitAll()
                         .requestMatchers("/api/v1/invitations/lookup", "/api/v1/invitations/accept").permitAll()
                         // Stripe webhook: no session; authenticity = signature over the raw body (billing feature).
-                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll();
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
+                        // Vendor portal (ADR-0011): the token in the X-Portal-Token header is the credential. Exactly these two paths.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/portal/link").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/portal/link/documents").permitAll();
                     // E2E-only test mailbox: public only under profile e2e (ProfileGuard forbids e2e + prod).
                     if (e2e) {
                         auth.requestMatchers("/api/test/mailbox").permitAll();
@@ -73,6 +77,9 @@ public class SecurityConfig {
                 })
                 .csrf(csrf -> csrf
                         .ignoringRequestMatchers("/api/v1/webhooks/stripe")
+                        // Portal upload: no cookie/session is read, so there is no ambient credential to forge a request with.
+                        .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
+                                .matcher(HttpMethod.POST, "/api/v1/portal/link/documents"))
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new HeaderOnlyCsrfTokenRequestHandler()))
                 .headers(headers -> headers

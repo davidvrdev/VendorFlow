@@ -53,7 +53,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     /** POST paths with a variable segment (normalized, lower case): pattern -> rule name. */
     private static final Map<Pattern, String> PATTERN_RULES = Map.of(
-            Pattern.compile("/api/v1/vendors/[^/]+/documents"), "document-upload");
+            Pattern.compile("/api/v1/vendors/[^/]+/documents"), "document-upload",
+            Pattern.compile("/api/v1/portal/link/documents"), "portal-upload");
+
+    /** GET/HEAD paths with a variable segment: the public portal view (HEAD is routed to the GET handler). */
+    private static final Map<Pattern, String> READ_PATTERN_RULES = Map.of(
+            Pattern.compile("/api/v1/portal/link"), "portal-view");
 
     private final RateLimiter limiter;
     private final ProblemJsonWriter writer;
@@ -66,7 +71,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String rule = HttpMethod.POST.matches(request.getMethod()) ? ruleFor(normalize(request)) : null;
+        String rule = null;
+        if (HttpMethod.POST.matches(request.getMethod())) {
+            rule = ruleFor(normalize(request), PATTERN_RULES, RULES);
+        } else if (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod())) {
+            rule = ruleFor(normalize(request), READ_PATTERN_RULES, Map.of());
+        }
         if (rule != null) {
             RateLimiter.Decision decision = limiter.tryAcquire(rule, request.getRemoteAddr());
             if (!decision.allowed()) {
@@ -79,12 +89,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    private static String ruleFor(String path) {
-        String rule = RULES.get(path);
+    private static String ruleFor(String path, Map<Pattern, String> patterns, Map<String, String> exact) {
+        String rule = exact.get(path);
         if (rule != null) {
             return rule;
         }
-        for (Map.Entry<Pattern, String> entry : PATTERN_RULES.entrySet()) {
+        for (Map.Entry<Pattern, String> entry : patterns.entrySet()) {
             if (entry.getKey().matcher(path).matches()) {
                 return entry.getValue();
             }

@@ -29,6 +29,7 @@ public class ApiClient {
     private final JsonMapper json;
     private final Map<String, String> cookies = new LinkedHashMap<>();
     private String remoteAddr = "127.0.0.1";
+    private final Map<String, String> extraHeaders = new LinkedHashMap<>();
 
     public ApiClient(MockMvc mvc, JsonMapper json) {
         this.mvc = mvc;
@@ -37,6 +38,12 @@ public class ApiClient {
 
     public ApiClient remoteAddr(String remoteAddr) {
         this.remoteAddr = remoteAddr;
+        return this;
+    }
+
+    /** A header sent with every request of this client (e.g. X-Portal-Token). */
+    public ApiClient header(String name, String value) {
+        extraHeaders.put(name, value);
         return this;
     }
 
@@ -114,6 +121,7 @@ public class ApiClient {
         }
         fields.forEach(builder::param);
         cookies.forEach((name, value) -> builder.cookie(new Cookie(name, value)));
+        extraHeaders.forEach(builder::header);
         if (csrfHeader && cookies.containsKey(CSRF_COOKIE)) {
             builder.header(CSRF_HEADER, cookies.get(CSRF_COOKIE));
         }
@@ -132,6 +140,7 @@ public class ApiClient {
             return request;
         });
         cookies.forEach((name, value) -> builder.cookie(new Cookie(name, value)));
+        extraHeaders.forEach(builder::header);
         if (csrfHeader && cookies.containsKey(CSRF_COOKIE)) {
             builder.header(CSRF_HEADER, cookies.get(CSRF_COOKIE));
         }

@@ -3,6 +3,7 @@ package com.vendorflow.organization.infrastructure;
 import com.vendorflow.organization.domain.MemberView;
 import com.vendorflow.organization.domain.Membership;
 import com.vendorflow.organization.domain.OrganizationSummary;
+import com.vendorflow.organization.domain.StaffRecipient;
 import com.vendorflow.shared.tenant.Role;
 import jakarta.persistence.LockModeType;
 import java.util.List;
@@ -74,4 +75,14 @@ public interface MembershipRepository extends JpaRepository<Membership, UUID> {
             where m.organizationId = :organizationId and lower(u.email) = lower(:email)
             """)
     long countByOrganizationAndEmail(@Param("organizationId") UUID organizationId, @Param("email") String email);
+
+    /** Verified OWNERs and ADMINs, the people operational notifications go to (same rule as the reminder digest). */
+    @Query("""
+            select new com.vendorflow.organization.domain.StaffRecipient(u.id, u.email)
+            from Membership m join AppUser u on u.id = m.userId
+            where m.organizationId = :organizationId and m.role in (com.vendorflow.shared.tenant.Role.OWNER,
+                  com.vendorflow.shared.tenant.Role.ADMIN) and u.emailVerifiedAt is not null
+            order by lower(u.email), u.id
+            """)
+    List<StaffRecipient> findVerifiedStaffRecipients(@Param("organizationId") UUID organizationId);
 }

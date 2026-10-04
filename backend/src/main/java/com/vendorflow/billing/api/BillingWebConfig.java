@@ -21,6 +21,8 @@ public class BillingWebConfig implements WebMvcConfigurer {
                 "/api/v1/webhooks/**",    // Stripe must always be able to deliver
                 "/api/v1/session/**",     // switching to another (possibly active) organization
                 "/api/v1/invitations/**", // accepting an invitation to ANOTHER organization
+                "/api/v1/portal/**",      // public vendor portal: no tenant here; PortalService checks the link's own organization
+                "/api/v1/vendors/*/upload-links/*/revoke", // revoking a link is a security action, like removing a member
                 "/api/v1/me/**");         // account endpoints
     }
 }

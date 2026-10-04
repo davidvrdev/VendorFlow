@@ -1,6 +1,7 @@
 // Mirrors docs/API.md "Phase 3 contract details" (authoritative). Keep in sync with the backend DTOs.
 export type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED";
-export type DocumentState = "CURRENT" | "SUPERSEDED" | "ARCHIVED";
+/** CANDIDATE (Phase 14): a portal upload waiting for review next to an approved CURRENT document. */
+export type DocumentState = "CURRENT" | "CANDIDATE" | "SUPERSEDED" | "ARCHIVED";
 export type ReviewDecision = "APPROVED" | "REJECTED";
 
 export interface DocumentType {
@@ -35,6 +36,8 @@ export interface DocumentSummary {
   reviewedBy: { fullName: string } | null;
   reviewedAt: string | null;
   reviewNote: string | null;
+  /** Phase 14: PORTAL = uploaded by the vendor through an upload link (no uploader user). */
+  source?: "STAFF" | "PORTAL";
 }
 
 /** Body of POST /document-types. */

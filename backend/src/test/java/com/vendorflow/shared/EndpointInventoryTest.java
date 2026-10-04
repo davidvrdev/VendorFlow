@@ -41,13 +41,19 @@ class EndpointInventoryTest extends IntegrationTest {
             "POST /api/v1/auth/password-reset/confirm",
             "POST /api/v1/invitations/lookup",
             "POST /api/v1/invitations/accept",
-            "POST /api/v1/webhooks/stripe");
+            "POST /api/v1/webhooks/stripe",
+            // Vendor portal (ADR-0011): the token in the X-Portal-Token header is the credential; PortalApiTest covers behavior.
+            "GET /api/v1/portal/link",
+            "POST /api/v1/portal/link/documents");
 
     /**
      * Mutating endpoints exempt from CSRF: the Stripe webhook has no browser session and is authenticated by its
      * signature over the raw body (StripeWebhookTest proves a bad/missing signature is rejected).
+     * The portal upload uses no cookie or session at all (the token in the X-Portal-Token header is the credential), so there is no
+     * ambient credential for a cross-site request to ride on (PortalApiTest proves it ignores a session cookie).
      */
-    private static final Set<String> CSRF_EXEMPT = Set.of("POST /api/v1/webhooks/stripe");
+    private static final Set<String> CSRF_EXEMPT = Set.of("POST /api/v1/webhooks/stripe",
+            "POST /api/v1/portal/link/documents");
 
     private static final Set<RequestMethod> SAFE = Set.of(RequestMethod.GET, RequestMethod.HEAD,
             RequestMethod.OPTIONS, RequestMethod.TRACE);
@@ -154,7 +160,11 @@ class EndpointInventoryTest extends IntegrationTest {
         // Counterpart of the 401 test for the allowlist: the public GETs must really be reachable anonymously.
         ApiClient anonymous = new ApiClient(mvc, json);
         for (String key : PUBLIC) {
-            if (key.startsWith("GET ")) {
+            if (key.startsWith("GET ") && key.contains("/portal/")) {
+                // Reachable without a session: an unknown token is the generic 404, not the 401 of a protected path.
+                assertThat(anonymous.perform(HttpMethod.GET, concretePath(pathOf(key)), null, false).andReturn()
+                        .getResponse().getStatus()).as(key).isEqualTo(404);
+            } else if (key.startsWith("GET ")) {
                 int status = anonymous.perform(HttpMethod.GET, pathOf(key), null, false).andReturn().getResponse()
                         .getStatus();
                 assertThat(status).as(key).isLessThan(400);

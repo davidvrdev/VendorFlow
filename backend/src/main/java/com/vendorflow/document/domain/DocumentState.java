@@ -1,5 +1,5 @@
 package com.vendorflow.document.domain;
 
 public enum DocumentState {
-    CURRENT, SUPERSEDED, ARCHIVED
+    CURRENT, CANDIDATE, SUPERSEDED, ARCHIVED
 }

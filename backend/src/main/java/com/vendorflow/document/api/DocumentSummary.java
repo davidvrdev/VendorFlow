@@ -1,5 +1,6 @@
 package com.vendorflow.document.api;
 
+import com.vendorflow.document.domain.DocumentSource;
 import com.vendorflow.document.domain.DocumentState;
 import com.vendorflow.document.domain.ReviewStatus;
 import java.time.Instant;
@@ -10,7 +11,7 @@ import java.util.UUID;
 public record DocumentSummary(UUID id, UUID vendorId, TypeRef documentType, DocumentState state,
         ReviewStatus reviewStatus, LocalDate issueDate, LocalDate expirationDate, String originalFilename,
         String mimeType, long sizeBytes, UserRef uploadedBy, Instant uploadedAt, UserRef reviewedBy,
-        Instant reviewedAt, String reviewNote) {
+        Instant reviewedAt, String reviewNote, DocumentSource source) {
 
     public record TypeRef(UUID id, String code, String name, boolean hasExpiration) {
     }

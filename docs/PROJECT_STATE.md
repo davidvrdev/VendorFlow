@@ -43,6 +43,9 @@ Stripe test-mode keys, pricing and plan limits (DECISIONS.md § Pending).
 - Phase 10: 10 critical flows green full-stack (26/26 twice), CSP/page-error fixture, CI full-stack job.
   Exploratory boundary QA (dates/time zones/idempotency) only shallow — carried to beta.
 
+- Phase 14 (vendor portal) done ahead of 12/13 (owner authorized all phases): backend 701 tests, frontend 447,
+  full-stack E2E 27/27, security review M1–M3/L1/L4 fixed.
+
 ## In Progress
 - Phase 11 — Production deployment: everything built and tested locally (ADR-0010 Render + Supabase, S3ObjectStorage,
   Dockerfiles, render.yaml, CI deploy hooks, backups, RUNBOOKS.md). **Blocked on the owner**: create Supabase/Render
@@ -55,6 +58,8 @@ Stripe test-mode keys, pricing and plan limits (DECISIONS.md § Pending).
 Phase 8 (Billing) → 9 (Hardening) → 10 (E2E/QA) = end of MVP; then 11 (deployment). Only on the owner's go.
 
 ## Known Issues
+- V11 was edited before release (portal security fixes): a local dev DB that applied the earlier V11 fails Flyway
+  validation. Recreate the local DB (or use another database name via DATABASE_URL); E2E used `vendorflow_e2e`.
 - Running the jar directly on Windows/JDK 25 needs `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/vf-tmp`
   (`mvnw verify` / `spring-boot:run` handle it automatically via the `windows-uds-tmpdir` pom profile).
 - Dev machine can run low on commit memory: use `npx vitest run --maxWorkers=2 --testTimeout=30000`; close other heavy

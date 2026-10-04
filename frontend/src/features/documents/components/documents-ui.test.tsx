@@ -74,6 +74,20 @@ describe("RequirementsCard as a documents table", () => {
     expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent("Upload renewal");
   });
 
+  it("shows a portal candidate as a pending-review replacement row next to the approved document", () => {
+    const withCandidate = {
+      ...vendor,
+      requirements: [{ ...vendor.requirements[0], currentDocument: doc({ reviewStatus: "APPROVED" }), pendingReplacement: doc({ id: "d2", state: "CANDIDATE", source: "PORTAL", originalFilename: "renewal.pdf" }) }],
+    };
+    render(<RequirementsCard vendor={withCandidate} documentTypes={types} role="ADMIN" />);
+    const row = screen.getByRole("row", { name: /Replacement/ });
+    expect(within(row).getByText("renewal.pdf")).toBeInTheDocument();
+    expect(within(row).getByText("Via portal")).toBeInTheDocument();
+    openMenu("Actions for Certificate of Insurance (replacement)");
+    expect(screen.getByRole("menuitem", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Edit dates" })).not.toBeInTheDocument();
+  });
+
   it("shows the rejection note next to the Rejected status", () => {
     const rejected = { ...vendor, requirements: [{ ...vendor.requirements[0], currentDocument: doc({ reviewStatus: "REJECTED", reviewNote: "Illegible scan" }) }] };
     render(<RequirementsCard vendor={rejected} documentTypes={types} role="VIEWER" />);

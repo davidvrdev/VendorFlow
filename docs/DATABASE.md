@@ -114,7 +114,7 @@ One uploaded file + its compliance metadata. History = chain of superseded docum
 | organization_id | uuid NOT NULL | |
 | vendor_id | uuid NOT NULL | composite FK → vendor |
 | document_type_id | uuid NOT NULL | composite FK → document_type |
-| state | text NOT NULL | `CURRENT | SUPERSEDED | ARCHIVED` |
+| state | text NOT NULL | `CURRENT | CANDIDATE | SUPERSEDED | ARCHIVED` (CANDIDATE: Phase 14, V11) |
 | review_status | text NOT NULL | `PENDING | APPROVED | REJECTED` |
 | issue_date | date NULL | |
 | expiration_date | date NULL | required when type `has_expiration` (service-validated; type can change) |
@@ -240,3 +240,14 @@ Creates `document` as specified above plus: `size_bytes>0`, `issue_date<=expirat
   `INSERT ... (status 'PROCESSED') ON CONFLICT (id) DO UPDATE ... WHERE stripe_event.status = 'FAILED'`; 0 rows affected = already processed. A failed attempt rolls the claim back and is
   recorded as FAILED in a separate transaction, so Stripe's retry reprocesses it.
 - `subscription` is not a tenant-scoped lookup table in the webhook path: it is found by `stripe_customer_id` (UNIQUE) with `FOR UPDATE`, because no session/organization exists there.
+
+### Phase 14 migration (V11__vendor_portal.sql)
+- `vendor_upload_link`: `id uuid PK`, `organization_id NOT NULL -> organization`, `vendor_id NOT NULL` (composite FK `(organization_id, vendor_id) -> vendor`), `token_hash text NOT NULL UNIQUE` (hex SHA-256, 64 chars; the raw token is never stored),
+  `created_by_user_id -> app_user ON DELETE SET NULL`, `expires_at timestamptz NOT NULL`, `revoked_at`, `last_used_at`, `use_count int NOT NULL DEFAULT 0` (successful uploads), `max_uploads int NOT NULL DEFAULT 20 CHECK 1..50`, `max_total_bytes bigint NOT NULL DEFAULT 104857600 CHECK 1 MiB..500 MiB`, `used_bytes bigint NOT NULL DEFAULT 0` (CHECK `used_bytes <= max_total_bytes`),
+  `created_at`; CHECKs `expires_at > created_at`, `use_count >= 0`; `UNIQUE (organization_id, id)`; index `(organization_id, vendor_id, created_at DESC)`.
+- `vendor_upload_link_type (id, organization_id, link_id, document_type_id)`: composite FKs `(organization_id, link_id) -> vendor_upload_link` and `(organization_id, document_type_id) -> document_type`, `UNIQUE (link_id, document_type_id)`.
+- `document.source text NOT NULL DEFAULT 'STAFF' CHECK IN ('STAFF','PORTAL')` and `document.upload_link_id uuid NULL` (composite FK `(organization_id, upload_link_id) -> vendor_upload_link`); CHECK `(source = 'PORTAL') = (upload_link_id IS NOT NULL)`.
+  `uploaded_by_user_id` is NULL for portal uploads.
+- `notification.kind` CHECK gains `PORTAL_UPLOAD`.
+- `document.state` CHECK gains `CANDIDATE` (a portal upload waiting for review next to an APPROVED CURRENT document) and a partial unique index `document_candidate_uq (vendor_id, document_type_id) WHERE state = 'CANDIDATE'` (at most one candidate per requirement). Compliance SQL and `ComplianceCalculator` read `state = 'CURRENT'` only, so a candidate never counts; approval swaps CURRENT/CANDIDATE in one transaction (old row flushed to SUPERSEDED first because of `document_current_uq`).
+- Use claim (atomic, inside the upload transaction): `UPDATE vendor_upload_link SET use_count = use_count + 1, used_bytes = used_bytes + :bytes, last_used_at = :now WHERE organization_id = :org AND id = :id AND revoked_at IS NULL AND expires_at > :now AND use_count < max_uploads AND used_bytes + :bytes <= max_total_bytes`; 0 rows = refused.

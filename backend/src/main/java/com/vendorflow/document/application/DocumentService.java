@@ -18,11 +18,13 @@ import com.vendorflow.shared.error.NotFoundException;
 import com.vendorflow.shared.error.RequestValidationException;
 import com.vendorflow.vendor.application.VendorService;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -61,7 +63,14 @@ public class DocumentService {
     public List<DocumentSummary> listForVendor(UUID vendorId, boolean includeHistory) {
         TenantContext.Tenant tenant = authorization.require(Permission.DATA_VIEW);
         vendors.requireExists(tenant.organizationId(), vendorId);
-        return reads.findByVendor(tenant.organizationId(), vendorId, includeHistory);
+        List<DocumentSummary> result = reads.findByVendor(tenant.organizationId(), vendorId, includeHistory);
+        if (includeHistory) {
+            return result;
+        }
+        // The default listing is what matters now: CURRENT plus any CANDIDATE waiting for review.
+        List<DocumentSummary> all = new ArrayList<>(result);
+        all.addAll(reads.findCandidates(tenant.organizationId(), vendorId));
+        return all;
     }
 
     @Transactional(readOnly = true)
@@ -111,9 +120,14 @@ public class DocumentService {
     @Transactional
     public DocumentSummary review(UUID id, ReviewRequest request) {
         TenantContext.Tenant tenant = authorization.require(Permission.DOCUMENTS_REVIEW);
+        ReviewStatus decision = request.decision().status();
+        Document peek = documents.findByIdAndOrganizationId(id, tenant.organizationId())
+                .orElseThrow(DocumentService::notFound);
+        if (peek.getState() == DocumentState.CANDIDATE) {
+            return reviewCandidate(tenant, peek, request, decision);
+        }
         Document document = lock(tenant, id);
         requireCurrent(document);
-        ReviewStatus decision = request.decision().status();
         if (decision == ReviewStatus.REJECTED && (request.note() == null || request.note().isBlank())) {
             throw new RequestValidationException("note", "is required when rejecting a document");
         }
@@ -135,7 +149,61 @@ public class DocumentService {
         return reads.summarize(document, type);
     }
 
-    /** CURRENT or SUPERSEDED -> ARCHIVED. Already archived: no-op. Archiving the CURRENT one promotes nothing. */
+    /**
+     * Review of a portal CANDIDATE (M1). The vendor row is locked FIRST (the same order as the upload pipeline, so the
+     * two cannot deadlock). Approve: the CURRENT document is superseded and the candidate promoted in one transaction.
+     * Reject: the CURRENT document stays untouched and the rejected candidate is archived (kept for history).
+     */
+    private DocumentSummary reviewCandidate(TenantContext.Tenant tenant, Document peek, ReviewRequest request,
+            ReviewStatus decision) {
+        UUID orgId = tenant.organizationId();
+        vendors.requireExistsAndLock(orgId, peek.getVendorId());
+        // Re-checked under the lock: the candidate may just have been replaced by a newer upload.
+        Document candidate = documents.findCurrentForUpdate(orgId, peek.getVendorId(), peek.getDocumentTypeId(),
+                DocumentState.CANDIDATE).filter(c -> c.getId().equals(peek.getId()))
+                .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "document-not-current",
+                        "Document is not current", "This document was already replaced or decided."));
+        if (decision == ReviewStatus.REJECTED && (request.note() == null || request.note().isBlank())) {
+            throw new RequestValidationException("note", "is required when rejecting a document");
+        }
+        DocumentType type = typeOf(candidate);
+        Instant now = clock.instant();
+        if (decision == ReviewStatus.APPROVED) {
+            Optional<Document> old = documents.findCurrentForUpdate(orgId, candidate.getVendorId(),
+                    candidate.getDocumentTypeId(), DocumentState.CURRENT);
+            old.ifPresent(o -> o.supersede(candidate.getId(), now));
+            // The old row leaves CURRENT before the candidate enters it (partial unique index document_current_uq).
+            documents.flush();
+            candidate.promote(now);
+            old.ifPresent(o -> {
+                Map<String, Object> superseded = DocumentUploadService.metadata(o.getVendorId(), type,
+                        o.getOriginalFilename());
+                superseded.put("supersededBy", candidate.getId().toString());
+                superseded.put("source", candidate.getSource().name());
+                audit.record("document.superseded", ENTITY_TYPE, o.getId(), superseded);
+            });
+        }
+        Map<String, Object> change = new LinkedHashMap<>();
+        change.put("before", candidate.getReviewStatus().name());
+        change.put("after", decision.name());
+        candidate.review(decision, request.note(), tenant.userId(), now);
+        if (decision == ReviewStatus.REJECTED) {
+            candidate.archive(now);
+        }
+        Map<String, Object> metadata = DocumentUploadService.metadata(candidate.getVendorId(), type,
+                candidate.getOriginalFilename());
+        metadata.put("decision", decision.name());
+        metadata.put("candidate", true);
+        if (request.note() != null) {
+            metadata.put("note", request.note());
+        }
+        metadata.put("changes", Map.of("reviewStatus", change));
+        audit.record("document.reviewed", ENTITY_TYPE, candidate.getId(), metadata);
+        documents.flush();
+        return reads.summarize(candidate, type);
+    }
+
+    /** CURRENT, CANDIDATE or SUPERSEDED -> ARCHIVED. Already archived: no-op. Archiving the CURRENT one promotes nothing. */
     @Transactional
     public DocumentSummary archive(UUID id) {
         TenantContext.Tenant tenant = authorization.require(Permission.ARCHIVE_AND_IMPORT);

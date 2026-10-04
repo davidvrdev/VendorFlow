@@ -43,6 +43,13 @@ public class DocumentReadService {
         return summarize(documents.findRows(organizationId, vendorId, states, PageRequest.of(0, MAX_ROWS)));
     }
 
+    /** The CANDIDATE documents (portal uploads waiting for review) of a vendor, one per type at most. */
+    @Transactional(readOnly = true)
+    public List<DocumentSummary> findCandidates(UUID organizationId, UUID vendorId) {
+        return summarize(documents.findRows(organizationId, vendorId, Set.of(DocumentState.CANDIDATE),
+                PageRequest.of(0, MAX_ROWS)));
+    }
+
     @Transactional(readOnly = true)
     public Optional<DocumentSummary> findById(UUID organizationId, UUID documentId) {
         return documents.findRow(documentId, organizationId).map(row -> summarize(List.of(row)).get(0));
@@ -75,7 +82,7 @@ public class DocumentReadService {
                 new DocumentSummary.TypeRef(t.getId(), t.getCode(), t.getName(), t.isHasExpiration()), d.getState(),
                 d.getReviewStatus(), d.getIssueDate(), d.getExpirationDate(), d.getOriginalFilename(),
                 d.getMimeType(), d.getSizeBytes(), userRef(names, d.getUploadedByUserId()), d.getCreatedAt(),
-                userRef(names, d.getReviewedByUserId()), d.getReviewedAt(), d.getReviewNote());
+                userRef(names, d.getReviewedByUserId()), d.getReviewedAt(), d.getReviewNote(), d.getSource());
     }
 
     private static DocumentSummary.UserRef userRef(Map<UUID, String> names, UUID userId) {

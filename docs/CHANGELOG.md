@@ -18,6 +18,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions start at 0.1.0
   organization settings, audit events, transactional email outbox. UI for all of it. Full-stack E2E suite
   (13 flows) using an e2e-profile test mailbox.
 
+- **Phase 14 — Vendor portal**: tokenized upload links (no vendor account; token in `X-Portal-Token`, hashed at rest,
+  oracle-free 404), staff create/list/revoke + email, public `/portal` page (fragment token stripped), same upload
+  pipeline (ClamAV, quota), portal uploads over an approved document become CANDIDATEs that never displace it until
+  approved, per-link upload/byte budgets, pre-multipart token guard, "Via portal" badges. ADR-0011.
+
 - **Phase 9 — Security hardening**: ArchUnit architecture rules (repository scoping, no entities in API, cycle
   ratchet), endpoint inventory test (auth + CSRF on every endpoint), API + page security headers, per-request nonce CSP,
   rate-limit coverage test, OSV dependency scan + opt-in OWASP profile, Tomcat/Jackson CVE bumps. OWASP ASVS L1

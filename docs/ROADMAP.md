@@ -20,7 +20,7 @@ Do not start future phases early. Status: ☐ not started · ◐ in progress · 
 | 11 | Production deployment | ◐ | Hosting ADR; containers; migrations in pipeline; secrets; monitoring; backups; runbooks |
 | 12 | Beta | ☐ | 3–5 design partners onboarded; feedback loop |
 | 13 | AI extraction | ☐ | Structured extraction with confidence + human review + provenance |
-| 14 | Vendor portal | ☐ | Tokenized upload links, no vendor account |
+| 14 | Vendor portal | ☑ | Tokenized upload links, no vendor account |
 | 15 | Automated chasing | ☐ | Scheduled vendor follow-ups |
 | 16 | Integrations | ☐ | PMS / accounting / CRM connectors |
 

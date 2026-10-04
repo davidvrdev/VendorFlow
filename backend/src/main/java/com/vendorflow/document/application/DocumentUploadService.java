@@ -5,6 +5,7 @@ import com.vendorflow.document.api.DocumentSummary;
 import com.vendorflow.document.domain.Document;
 import com.vendorflow.document.domain.DocumentState;
 import com.vendorflow.document.domain.DocumentType;
+import com.vendorflow.document.domain.ReviewStatus;
 import com.vendorflow.document.infrastructure.DocumentRepository;
 import com.vendorflow.document.infrastructure.DocumentTypeRepository;
 import com.vendorflow.document.infrastructure.storage.FileScanner;
@@ -34,6 +35,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,6 +113,35 @@ public class DocumentUploadService {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "rate-limited", "Too many requests",
                     "Too many requests. Please try again later.", decision.retryAfterSeconds());
         }
+        return process(new Uploader(orgId, tenant.userId(), null, null, null, null), vendorId, file, documentTypeIdText,
+                issueDateText, expirationDateText);
+    }
+
+    /**
+     * Upload through a vendor-portal link (ADR-0011). The caller (PortalService) has already verified the link, the
+     * vendor and the subscription; there is no user and no tenant context, so the organization comes from the link.
+     * Everything else is the staff pipeline. Not @Transactional, like {@link #upload}.
+     */
+    public DocumentSummary uploadFromPortal(PortalUpload portal, MultipartFile file, String documentTypeIdText,
+            String issueDateText, String expirationDateText) {
+        return process(new Uploader(portal.organizationId(), null, portal.linkId(), portal.allowedTypeIds(), portal.today(),
+                portal.inTransaction()), portal.vendorId(), file, documentTypeIdText, issueDateText,
+                expirationDateText);
+    }
+
+    /** What the portal tells the pipeline: tenant, vendor, link, allowed types, and a callback run INSIDE the insert transaction. */
+    public record PortalUpload(UUID organizationId, UUID vendorId, UUID linkId, Set<UUID> allowedTypeIds, LocalDate today,
+            Consumer<DocumentSummary> inTransaction) {
+    }
+
+    /** Who is uploading: a user (staff) or a portal link; allowedTypeIds and hook are only set for the portal. */
+    private record Uploader(UUID organizationId, UUID userId, UUID linkId, Set<UUID> allowedTypeIds, LocalDate today,
+            Consumer<DocumentSummary> hook) {
+    }
+
+    private DocumentSummary process(Uploader uploader, UUID vendorId, MultipartFile file, String documentTypeIdText,
+            String issueDateText, String expirationDateText) {
+        UUID orgId = uploader.organizationId();
         vendors.requireExists(orgId, vendorId);
 
         // 1. present and non-empty
@@ -130,7 +163,7 @@ public class DocumentUploadService {
             throw unsupported("The file content does not match its extension.");
         }
         // 5. document type
-        DocumentType type = activeType(orgId, documentTypeIdText);
+        DocumentType type = activeType(orgId, documentTypeIdText, uploader.allowedTypeIds());
         // 6. dates
         List<FieldViolation> errors = new ArrayList<>();
         LocalDate issue = DocumentDates.parse("issueDate", issueDateText, errors);
@@ -149,7 +182,7 @@ public class DocumentUploadService {
         String key = StorageKeys.documentKey(orgId, documentId);
         StoredFile stored = store(key, file, maxBytes);
         try {
-            return tx.execute(status -> persist(tenant, vendorId, type, documentId, key, name.filename(), kind,
+            return tx.execute(status -> persist(uploader, vendorId, type, documentId, key, name.filename(), kind,
                     stored, issue, expiration));
         } catch (RuntimeException e) {
             discard(key);
@@ -171,7 +204,7 @@ public class DocumentUploadService {
         }
     }
 
-    private DocumentType activeType(UUID orgId, String text) {
+    private DocumentType activeType(UUID orgId, String text, Set<UUID> allowedTypeIds) {
         UUID id = null;
         if (text != null && !text.isBlank()) {
             try {
@@ -182,7 +215,8 @@ public class DocumentUploadService {
         }
         Optional<DocumentType> type = id == null ? Optional.empty() : types.findByIdAndOrganizationId(id, orgId);
         // Same answer for missing, malformed, foreign and inactive.
-        return type.filter(DocumentType::isActive).orElseThrow(
+        return type.filter(DocumentType::isActive)
+                .filter(t -> allowedTypeIds == null || allowedTypeIds.contains(t.getId())).orElseThrow(
                 () -> new RequestValidationException("documentTypeId", "must be an active document type"));
     }
 
@@ -224,9 +258,9 @@ public class DocumentUploadService {
         }
     }
 
-    private DocumentSummary persist(TenantContext.Tenant tenant, UUID vendorId, DocumentType type, UUID documentId,
+    private DocumentSummary persist(Uploader uploader, UUID vendorId, DocumentType type, UUID documentId,
             String key, String filename, FileKind kind, StoredFile stored, LocalDate issue, LocalDate expiration) {
-        UUID orgId = tenant.organizationId();
+        UUID orgId = uploader.organizationId();
         Instant now = clock.instant();
         vendors.requireExistsAndLock(orgId, vendorId);
         // Authoritative quota check with the streamed byte count; the transaction rolls back and upload() deletes
@@ -236,29 +270,56 @@ public class DocumentUploadService {
             throw quotaExceeded();
         }
 
-        Optional<Document> previous = documents.findCurrentForUpdate(orgId, vendorId, type.getId(),
+        Optional<Document> current = documents.findCurrentForUpdate(orgId, vendorId, type.getId(),
                 DocumentState.CURRENT);
+        // M1 (ADR-0011): a vendor must never displace an APPROVED, unexpired document. Such a portal upload is stored
+        // as a CANDIDATE: the approved document stays CURRENT and keeps counting; staff approval swaps them.
+        boolean candidate = uploader.linkId() != null && current.filter(c -> c.getReviewStatus() == ReviewStatus.APPROVED
+                && !(type.isHasExpiration() && c.getExpirationDate() != null
+                        && c.getExpirationDate().isBefore(uploader.today()))).isPresent();
+        // A pending candidate is always replaced by a newer upload (staff or portal): at most one per requirement.
+        Optional<Document> oldCandidate = documents.findCurrentForUpdate(orgId, vendorId, type.getId(),
+                DocumentState.CANDIDATE);
+        Optional<Document> previous = candidate ? Optional.empty() : current;
         previous.ifPresent(old -> old.supersede(documentId, now));
-        // Flush the UPDATE before the INSERT: Hibernate would insert first, and the partial unique index allows only
-        // one CURRENT row per (vendor, type). (superseded_by FK is deferred, so pointing at the new id is fine.)
+        oldCandidate.ifPresent(old -> old.supersede(documentId, now));
+        // Flush the UPDATEs before the INSERT: Hibernate would insert first, and the partial unique indexes allow only
+        // one CURRENT (and one CANDIDATE) row per (vendor, type). (superseded_by FK is deferred.)
         documents.flush();
 
         Document document = documents.saveAndFlush(new Document(documentId, orgId, vendorId, type.getId(), issue,
-                expiration, key, filename, kind.mimeType(), stored.sizeBytes(), stored.sha256(), tenant.userId(), now));
+                expiration, key, filename, kind.mimeType(), stored.sizeBytes(), stored.sha256(), uploader.userId(),
+                uploader.linkId(), candidate, now));
 
         Map<String, Object> uploaded = metadata(vendorId, type, filename);
         uploaded.put("sizeBytes", stored.sizeBytes());
         uploaded.put("mimeType", kind.mimeType());
         uploaded.put("sha256", stored.sha256());
-        audit.record("document.uploaded", "document", documentId, uploaded);
-        previous.ifPresent(old -> {
+        if (uploader.linkId() != null) {
+            uploaded.put("source", "PORTAL");
+            uploaded.put("linkId", uploader.linkId().toString());
+        }
+        if (candidate) {
+            uploaded.put("candidate", true);
+        }
+        // Explicit organization/actor: a portal upload has no TenantContext (and no user).
+        audit.record(orgId, uploader.userId(), "document.uploaded", "document", documentId, uploaded);
+        for (Document old : Stream.concat(previous.stream(), oldCandidate.stream()).toList()) {
             Map<String, Object> superseded = metadata(vendorId, type, old.getOriginalFilename());
             superseded.put("supersededBy", documentId.toString());
-            audit.record("document.superseded", "document", old.getId(), superseded);
-        });
+            if (uploader.linkId() != null) {
+                superseded.put("source", "PORTAL");
+            }
+            audit.record(orgId, uploader.userId(), "document.superseded", "document", old.getId(), superseded);
+        }
         log.info("Document uploaded: id={} org={} vendor={} bytes={} mime={} sha256={}", documentId, orgId, vendorId,
                 stored.sizeBytes(), kind.mimeType(), stored.sha256());
-        return reads.summarize(document, type);
+        DocumentSummary summary = reads.summarize(document, type);
+        if (uploader.hook() != null) {
+            // Inside the transaction: claiming the link use and queueing the staff e-mail commit or roll back with the row.
+            uploader.hook().accept(summary);
+        }
+        return summary;
     }
 
     /** Common audit metadata of document events: vendorId drives the vendor history query. */

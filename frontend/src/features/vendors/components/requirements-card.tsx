@@ -1,4 +1,6 @@
+import { Fragment } from "react";
 import { ComplianceStatusBadge } from "@/components/compliance-status-badge";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardAction,
@@ -133,8 +135,8 @@ export function RequirementsCard({
                     ? null
                     : expirationText(requirement.daysUntilExpiration);
                   return (
+                    <Fragment key={requirement.documentTypeId}>
                     <TableRow
-                      key={requirement.documentTypeId}
                       className={
                         inactive
                           ? "bg-muted/40 text-muted-foreground"
@@ -198,6 +200,29 @@ export function RequirementsCard({
                         </div>
                       </TableCell>
                     </TableRow>
+                    {requirement.pendingReplacement ? (
+                      <TableRow className="bg-muted/30">
+                        <TableCell className="pl-6 text-xs text-muted-foreground">Replacement</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">Pending review</Badge>
+                        </TableCell>
+                        <DocumentCells document={requirement.pendingReplacement} />
+                        <TableCell className="text-right">
+                          <DocumentRowMenu
+                            vendorId={vendor.id}
+                            companyName={vendor.companyName}
+                            role={role}
+                            typeName={`${requirement.name} (replacement)`}
+                            typeId={requirement.documentTypeId}
+                            document={requirement.pendingReplacement}
+                            typeActive={!inactive}
+                            documentTypes={documentTypes}
+                            currentByType={currentByType}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    </Fragment>
                   );
                 })}
               </TableBody>

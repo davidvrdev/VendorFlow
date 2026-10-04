@@ -10,6 +10,8 @@ interface ApiErrorInit {
   detail?: string;
   requestId?: string;
   errors?: FieldError[];
+  /** RFC 9457 `type` URI, e.g. ".../portal-upload-limit"; tells apart errors that share a status. */
+  type?: string;
 }
 
 /**
@@ -23,8 +25,9 @@ export class ApiError extends Error {
   readonly detail?: string;
   readonly requestId?: string;
   readonly errors?: FieldError[];
+  readonly type?: string;
 
-  constructor({ status, title, detail, requestId, errors }: ApiErrorInit) {
+  constructor({ status, title, detail, requestId, errors, type }: ApiErrorInit) {
     super(detail ?? title);
     this.name = "ApiError";
     this.status = status;
@@ -32,6 +35,12 @@ export class ApiError extends Error {
     this.detail = detail;
     this.requestId = requestId;
     this.errors = errors;
+    this.type = type;
+  }
+
+  /** Last path segment of `type` ("portal-upload-limit"), or undefined. */
+  get code(): string | undefined {
+    return this.type?.split("/").pop() || undefined;
   }
 
   /** Parse a non-2xx response. Never throws; falls back to a generic message for non-JSON bodies. */
@@ -61,6 +70,7 @@ export class ApiError extends Error {
       detail: asString(problem.detail),
       requestId: asString(problem.requestId) ?? headerRequestId,
       errors: parseFieldErrors(problem.errors),
+      type: asString(problem.type),
     });
   }
 }

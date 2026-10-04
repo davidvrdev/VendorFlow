@@ -19,7 +19,8 @@ export interface RowActions {
  */
 export function rowActions(role: Role | null | undefined, document: DocumentSummary | null, typeActive = true): RowActions {
   const writer = can(role, "VENDORS_WRITE");
-  const current = document?.state === "CURRENT";
+  // A portal CANDIDATE is reviewed like a current document (approving it supersedes the old one).
+  const current = document?.state === "CURRENT" || document?.state === "CANDIDATE";
   const reviewer = can(role, "DOCUMENTS_REVIEW");
   return {
     upload: document === null && writer && typeActive,
@@ -27,7 +28,7 @@ export function rowActions(role: Role | null | undefined, document: DocumentSumm
     download: document !== null && can(role, "DOCUMENTS_DOWNLOAD"),
     approve: current && reviewer && document.reviewStatus !== "APPROVED",
     reject: current && reviewer && document.reviewStatus !== "REJECTED",
-    editDates: current && writer,
+    editDates: document?.state === "CURRENT" && writer,
     archive: document !== null && document.state !== "ARCHIVED" && can(role, "ARCHIVE_AND_IMPORT"),
   };
 }

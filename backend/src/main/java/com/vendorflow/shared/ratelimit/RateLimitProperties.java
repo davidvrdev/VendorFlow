@@ -29,6 +29,11 @@ public class RateLimitProperties {
             Map.entry("document-request-user", 30),
             Map.entry("vendor-import-preview-user", 10),
             Map.entry("vendor-export-user", 10),
+            Map.entry("portal-view", 60),
+            Map.entry("portal-upload", 20),
+            Map.entry("portal-link", 60),
+            Map.entry("portal-link-upload", 10),
+            Map.entry("portal-link-create-user", 30),
             Map.entry("stripe-webhook", 600)));
     /** Per-rule window overriding {@link #window} (the CSV export is 10 per 10 minutes, not per minute). */
     private Map<String, Duration> windows = new LinkedHashMap<>(

@@ -59,6 +59,14 @@ public class Document extends UuidEntity {
     @Column(name = "uploaded_by_user_id", updatable = false)
     private UUID uploadedByUserId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
+    private DocumentSource source;
+
+    /** The portal link a PORTAL upload came through; null for STAFF uploads. */
+    @Column(name = "upload_link_id", updatable = false)
+    private UUID uploadLinkId;
+
     @Column(name = "superseded_by_document_id")
     private UUID supersededByDocumentId;
 
@@ -80,15 +88,17 @@ public class Document extends UuidEntity {
     protected Document() {
     }
 
-    /** A freshly uploaded document: CURRENT and PENDING review. */
+    /** A freshly uploaded document: CURRENT and PENDING review. {@code uploadLinkId != null} marks a PORTAL upload. */
     public Document(UUID id, UUID organizationId, UUID vendorId, UUID documentTypeId, LocalDate issueDate,
             LocalDate expirationDate, String storageKey, String originalFilename, String mimeType, long sizeBytes,
-            String sha256, UUID uploadedByUserId, Instant now) {
+            String sha256, UUID uploadedByUserId, UUID uploadLinkId, boolean candidate, Instant now) {
         super(id);
+        this.source = uploadLinkId == null ? DocumentSource.STAFF : DocumentSource.PORTAL;
+        this.uploadLinkId = uploadLinkId;
         this.organizationId = organizationId;
         this.vendorId = vendorId;
         this.documentTypeId = documentTypeId;
-        this.state = DocumentState.CURRENT;
+        this.state = candidate ? DocumentState.CANDIDATE : DocumentState.CURRENT;
         this.reviewStatus = ReviewStatus.PENDING;
         this.issueDate = issueDate;
         this.expirationDate = expirationDate;
@@ -105,6 +115,12 @@ public class Document extends UuidEntity {
     public void supersede(UUID newerDocumentId, Instant now) {
         this.state = DocumentState.SUPERSEDED;
         this.supersededByDocumentId = newerDocumentId;
+        this.updatedAt = now;
+    }
+
+    /** A reviewed-and-approved CANDIDATE becomes the CURRENT document (the caller has already superseded the old one). */
+    public void promote(Instant now) {
+        this.state = DocumentState.CURRENT;
         this.updatedAt = now;
     }
 
@@ -173,6 +189,14 @@ public class Document extends UuidEntity {
 
     public String getSha256() {
         return sha256;
+    }
+
+    public DocumentSource getSource() {
+        return source;
+    }
+
+    public UUID getUploadLinkId() {
+        return uploadLinkId;
     }
 
     public UUID getUploadedByUserId() {

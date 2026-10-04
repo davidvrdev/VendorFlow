@@ -208,6 +208,9 @@ class ArchitectureTest {
             Map.entry("NotificationRepository.scrubUndeliveredTokens", "system retention job over all organizations"),
             Map.entry("SubscriptionRepository.findByStripeCustomerIdForUpdate", "signed Stripe webhook: the customer "
                     + "id from the verified event determines the organization"),
+            Map.entry("VendorUploadLinkRepository.findByTokenHash", "public vendor portal: the unguessable token "
+                    + "(looked up by its SHA-256) is the capability and determines the organization; every later query "
+                    + "uses the link's organization id"),
             Map.entry("VendorImportRepository.deleteExpiredBefore", "system retention job over all organizations"));
 
     /** Inherited CRUD methods that take only the primary key (or nothing): banned on tenant repositories. */

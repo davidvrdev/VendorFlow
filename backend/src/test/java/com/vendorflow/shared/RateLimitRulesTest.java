@@ -43,6 +43,11 @@ class RateLimitRulesTest extends IntegrationTest {
             Map.entry("document-request-user", "RateLimitRulesTest.documentRequestsArePerUser"),
             Map.entry("vendor-import-preview-user", "VendorImportPreviewTest (rate limit test)"),
             Map.entry("vendor-export-user", "VendorCsvExportTest.exportsAreLimitedToTenPerTenMinutesPerUser"),
+            Map.entry("portal-view", "PortalRateLimitTest.viewIsLimitedPerIp"),
+            Map.entry("portal-upload", "PortalRateLimitTest.uploadIsLimitedPerIp"),
+            Map.entry("portal-link", "PortalRateLimitTest.linkBudgetIsPerLinkNotPerIp"),
+            Map.entry("portal-link-upload", "PortalRateLimitTest.uploadAttemptsAreLimitedPerLinkAndFailedAttemptsCount"),
+            Map.entry("portal-link-create-user", "PortalRateLimitTest.linkCreationIsLimitedPerUser"),
             Map.entry("stripe-webhook", "RateLimitRulesTest.stripeWebhook")));
 
     @Autowired MockMvc mvc;

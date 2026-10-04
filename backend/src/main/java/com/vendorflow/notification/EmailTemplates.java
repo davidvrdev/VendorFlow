@@ -27,6 +27,7 @@ public class EmailTemplates {
             case PASSWORD_CHANGED -> passwordChanged(payload);
             case INVITATION -> invitation(payload);
             case DOCUMENT_REQUEST -> documentRequest(payload);
+            case PORTAL_UPLOAD -> portalUpload(payload);
             case COMPLIANCE_DIGEST -> complianceDigest(payload);
             default -> throw new IllegalArgumentException("No template for kind " + kind);
         };
@@ -98,7 +99,58 @@ public class EmailTemplates {
         return new RenderedEmail(subject, text, html);
     }
 
+    /**
+     * Portal variant of the document request (ADR-0011): the payload carries the raw portal token (scrubbed by the
+     * dispatcher after delivery) and the requested type names. The link keeps the token in the fragment.
+     */
+    private RenderedEmail portalDocumentRequest(Map<String, Object> payload) {
+        String organization = oneLine(required(payload, "organizationName"));
+        String types = oneLine(required(payload, "documentTypeName"));
+        String vendor = oneLine(String.valueOf(payload.getOrDefault("vendorName", "")));
+        String contact = oneLine(String.valueOf(payload.getOrDefault("contactName", "")));
+        String requester = oneLine(String.valueOf(payload.getOrDefault("requesterName", "A team member")));
+        String replyTo = payload.get("replyTo") == null ? null : payload.get("replyTo").toString();
+        String expires = oneLine(String.valueOf(payload.getOrDefault("expiresAt", "")));
+        String link = baseUrl + "/portal#token=" + required(payload, "token");
+        String greeting = contact.isBlank() ? "Hello" : "Hello " + contact;
+        String subject = organization + " requests your " + types;
+        String text = greeting + ",\n\n"
+                + requester + " at " + organization + " asked VendorFlow to request the following"
+                + (vendor.isBlank() ? "" : " for " + vendor) + ":\n\n"
+                + "  " + types + "\n\n"
+                + "Upload the files securely here (no account needed):\n" + link + "\n\n"
+                + (expires.isBlank() ? "" : "This link expires on " + expires + ". ")
+                + "Do not forward it: anyone with the link can upload files for your company.\n";
+        String html = "<p>" + HtmlUtils.htmlEscape(greeting) + ",</p>"
+                + "<p>" + HtmlUtils.htmlEscape(requester) + " at <strong>" + HtmlUtils.htmlEscape(organization)
+                + "</strong> asked VendorFlow to request the following"
+                + (vendor.isBlank() ? "" : " for " + HtmlUtils.htmlEscape(vendor)) + ":</p>"
+                + "<p><strong>" + HtmlUtils.htmlEscape(types) + "</strong></p>"
+                + "<p><a href=\"" + HtmlUtils.htmlEscape(link) + "\">Upload your documents</a> (no account needed)</p>"
+                + "<p>" + (expires.isBlank() ? "" : "This link expires on " + HtmlUtils.htmlEscape(expires) + ". ")
+                + "Do not forward it: anyone with the link can upload files for your company.</p>";
+        return new RenderedEmail(subject, text, html, replyTo);
+    }
+
+    /** Staff notice: a vendor uploaded through a portal link. No filename (vendor-controlled) and no secret. */
+    private RenderedEmail portalUpload(Map<String, Object> payload) {
+        String organization = oneLine(required(payload, "organizationName"));
+        String vendor = oneLine(required(payload, "vendorName"));
+        String type = oneLine(required(payload, "documentTypeName"));
+        String link = baseUrl + "/vendors/" + oneLine(required(payload, "vendorId"));
+        String subject = vendor + " uploaded a document to " + organization;
+        String text = vendor + " used an upload link to send a document (" + type + ") to " + organization + ".\n\n"
+                + "It is waiting for your review: " + link + "\n";
+        String html = "<p><strong>" + HtmlUtils.htmlEscape(vendor) + "</strong> used an upload link to send a document ("
+                + HtmlUtils.htmlEscape(type) + ") to " + HtmlUtils.htmlEscape(organization) + ".</p>"
+                + "<p><a href=\"" + HtmlUtils.htmlEscape(link) + "\">Review it</a></p>";
+        return new RenderedEmail(subject, text, html);
+    }
+
     private RenderedEmail documentRequest(Map<String, Object> payload) {
+        if (Boolean.TRUE.equals(payload.get("portal"))) {
+            return portalDocumentRequest(payload);
+        }
         String organization = oneLine(required(payload, "organizationName"));
         String type = oneLine(required(payload, "documentTypeName"));
         String vendor = oneLine(String.valueOf(payload.getOrDefault("vendorName", "")));

@@ -6,6 +6,7 @@ import { VendorComplianceBadge } from "@/components/vendor-compliance-badge";
 import { PageHeader } from "@/components/page-header";
 import { DocumentHistory } from "@/features/documents/components/document-history";
 import { OtherDocumentsCard } from "@/features/documents/components/other-documents-card";
+import { UploadLinksCard } from "@/features/portal/components/upload-links-card";
 import { HistoryCard } from "@/features/vendors/components/history-card";
 import { currentDocumentsByType, RequirementsCard } from "@/features/vendors/components/requirements-card";
 import { VendorActions } from "@/features/vendors/components/vendor-actions";
@@ -41,7 +42,7 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
   }
 
   // Changes whenever the set of current documents changes, so an open history list reloads after uploads/archives.
-  const documentsVersion = [...vendor.requirements.flatMap((r) => (r.currentDocument ? [r.currentDocument.id] : [])), ...vendor.otherDocuments.map((d) => d.id)].join(",");
+  const documentsVersion = [...vendor.requirements.flatMap((r) => [...(r.currentDocument ? [r.currentDocument.id] : []), ...(r.pendingReplacement ? [r.pendingReplacement.id] : [])]), ...vendor.otherDocuments.map((d) => d.id)].join(",");
   const typeNames = Object.fromEntries(documentTypes.map((type) => [type.code, type.name]));
 
   return (
@@ -64,6 +65,16 @@ export default async function VendorDetailPage({ params, searchParams }: PagePro
         <VendorDetailsCard vendor={vendor} />
         <RequirementsCard vendor={vendor} documentTypes={documentTypes} role={role} />
         <OtherDocumentsCard vendor={vendor} documentTypes={documentTypes} currentByType={currentDocumentsByType(vendor)} role={role} />
+        <UploadLinksCard
+          vendorId={vendor.id}
+          vendorName={vendor.companyName}
+          vendorEmail={vendor.email}
+          vendorActive={vendor.status === "ACTIVE"}
+          role={role}
+          requirements={vendor.requirements
+            .filter((requirement) => requirement.active && documentTypes.some((type) => type.id === requirement.documentTypeId))
+            .map((requirement) => ({ documentTypeId: requirement.documentTypeId, name: requirement.name, status: requirement.status }))}
+        />
         <DocumentHistory vendorId={vendor.id} version={documentsVersion} />
         <HistoryCard
           events={history.items}

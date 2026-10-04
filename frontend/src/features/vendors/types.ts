@@ -28,6 +28,8 @@ export interface VendorRequirement {
   hasExpiration: boolean;
   /** Phase 3: the CURRENT document for this requirement, or null when there is none. */
   currentDocument: DocumentSummary | null;
+  /** Phase 14: a portal upload waiting for review that will replace the approved current document. */
+  pendingReplacement?: DocumentSummary | null;
   /** Phase 4 */
   status: RequirementStatus;
   /** Negative when expired; null when the type has no expiration or the date is unknown. */

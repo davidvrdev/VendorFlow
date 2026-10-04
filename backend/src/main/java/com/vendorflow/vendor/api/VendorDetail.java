@@ -21,6 +21,6 @@ public record VendorDetail(UUID id, String companyName, String contactName, Stri
     }
 
     public record Requirement(UUID documentTypeId, String code, String name, boolean hasExpiration,
-            DocumentSummary currentDocument, RequirementStatus status, Integer daysUntilExpiration, boolean active) {
+            DocumentSummary currentDocument, DocumentSummary pendingReplacement, RequirementStatus status, Integer daysUntilExpiration, boolean active) {
     }
 }

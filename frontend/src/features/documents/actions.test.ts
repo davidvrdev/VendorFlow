@@ -49,3 +49,11 @@ describe("rowActions for a missing document", () => {
     expect(hasAnyAction(rowActions("OWNER", null, false))).toBe(false);
   });
 });
+
+describe("rowActions with a portal CANDIDATE", () => {
+  it("can be approved or rejected by a reviewer but its dates cannot be edited", () => {
+    const candidate = doc({ state: "CANDIDATE", source: "PORTAL" });
+    expect(rowActions("ADMIN", candidate)).toMatchObject({ approve: true, reject: true, editDates: false, download: true });
+    expect(rowActions("VIEWER", candidate)).toMatchObject({ approve: false, reject: false });
+  });
+});

@@ -9,6 +9,7 @@ import com.vendorflow.organization.domain.Membership;
 import com.vendorflow.organization.domain.Permission;
 import com.vendorflow.shared.tenant.Role;
 import com.vendorflow.organization.domain.RolePermissions;
+import com.vendorflow.organization.domain.StaffRecipient;
 import com.vendorflow.organization.infrastructure.MembershipRepository;
 import com.vendorflow.shared.error.ApiException;
 import com.vendorflow.shared.error.NotFoundException;
@@ -135,6 +136,12 @@ public class MembershipService {
     @Transactional(readOnly = true)
     public boolean isMemberByEmail(UUID organizationId, String email) {
         return memberships.countByOrganizationAndEmail(organizationId, email) > 0;
+    }
+
+    /** Verified OWNER/ADMIN recipients for operational e-mail (no authorization: callers act for the organization). */
+    @Transactional(readOnly = true)
+    public List<StaffRecipient> staffRecipients(UUID organizationId) {
+        return memberships.findVerifiedStaffRecipients(organizationId);
     }
 
     private Membership find(UUID orgId, UUID membershipId) {

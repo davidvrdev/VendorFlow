@@ -1,4 +1,5 @@
 import { FileText, FileX } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { formatCalendarDate, formatDate, formatFileSize, truncateFilename } from "@/lib/format";
 import type { DocumentSummary } from "../types";
@@ -40,6 +41,7 @@ export function DocumentCells({ document }: { document: DocumentSummary | null }
             <p className="text-sm font-medium break-all" title={document.originalFilename}>
               {truncateFilename(document.originalFilename)}
             </p>
+            {document.source === "PORTAL" ? <PortalSourceBadge /> : null}
             <p className="text-xs text-muted-foreground">
               Uploaded {formatDate(document.uploadedAt)} · {formatFileSize(document.sizeBytes)}
             </p>
@@ -54,5 +56,14 @@ export function DocumentCells({ document }: { document: DocumentSummary | null }
         <ReviewStatusBadge document={document} />
       </TableCell>
     </>
+  );
+}
+
+/** Marks documents the vendor uploaded itself through an upload link (no staff uploader). */
+export function PortalSourceBadge() {
+  return (
+    <Badge variant="secondary" className="my-0.5">
+      Via portal
+    </Badge>
   );
 }

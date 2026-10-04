@@ -9,9 +9,10 @@ import { formatCalendarDate, formatDate, formatFileSize, truncateFilename } from
 import { errorMessage } from "@/lib/forms/api-errors";
 import { downloadHref, listVendorDocuments } from "../api";
 import type { DocumentState, DocumentSummary } from "../types";
+import { PortalSourceBadge } from "./document-cells";
 import { ReviewStatusBadge } from "./review-status";
 
-const STATE_LABELS: Record<DocumentState, string> = { CURRENT: "Current", SUPERSEDED: "Superseded", ARCHIVED: "Archived" };
+const STATE_LABELS: Record<DocumentState, string> = { CURRENT: "Current", CANDIDATE: "Pending review", SUPERSEDED: "Superseded", ARCHIVED: "Archived" };
 
 type Loaded = { version: string; documents: DocumentSummary[] } | { version: string; error: string };
 
@@ -83,6 +84,7 @@ export function DocumentHistory({ vendorId, version }: DocumentHistoryProps) {
                     <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                       {document.documentType.name}
                       <Badge variant="secondary">{STATE_LABELS[document.state]}</Badge>
+                      {document.source === "PORTAL" ? <PortalSourceBadge /> : null}
                     </p>
                     <p className="text-sm break-all" title={document.originalFilename}>
                       {truncateFilename(document.originalFilename, 48)} <span className="text-muted-foreground">({formatFileSize(document.sizeBytes)})</span>

@@ -14,6 +14,7 @@ Major decisions get an ADR in `docs/adr/`. Small decisions are logged here, one 
 | [0007](adr/ADR-0007-file-storage-and-downloads.md) | Private storage, authorized downloads | Accepted |
 | [0008](adr/ADR-0008-fixed-roles.md) | Fixed roles enum | Accepted |
 | [0009](adr/ADR-0009-runtime-versions.md) | Java 21 target, Boot 4.1, Next 16 | Accepted |
+| [0011](adr/ADR-0011-vendor-portal.md) | Vendor portal: tokenized upload links, no vendor account | Accepted |
 
 ## Small decisions
 | Date | Decision | Why |

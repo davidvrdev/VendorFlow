@@ -345,6 +345,10 @@ public class VendorService {
         for (DocumentSummary doc : documentReads.findByVendor(orgId, v.getId(), false)) {
             currentByType.put(doc.documentType().id(), doc);
         }
+        Map<UUID, DocumentSummary> candidateByType = new LinkedHashMap<>();
+        for (DocumentSummary doc : documentReads.findCandidates(orgId, v.getId())) {
+            candidateByType.put(doc.documentType().id(), doc);
+        }
         List<DocumentTypeAdminView> types = documentTypes.findAdminViewsByIds(orgId, typeIds).stream()
                 .sorted(Comparator.comparingInt(DocumentTypeAdminView::sortOrder)
                         .thenComparing(DocumentTypeAdminView::name))
@@ -363,7 +367,7 @@ public class VendorService {
                 activeEvaluations.add(evaluated);
             }
             reqs.add(new VendorDetail.Requirement(t.id(), t.code(), t.name(), t.hasExpiration(), doc,
-                    evaluated.status(),
+                    candidateByType.get(t.id()), evaluated.status(),
                     ComplianceCalculator.daysUntilExpiration(t.hasExpiration(), state, ctx.today()), t.active()));
         }
         Set<UUID> requiredTypeIds = new HashSet<>(typeIds);
@@ -382,6 +386,24 @@ public class VendorService {
     @Transactional(readOnly = true)
     public void requireExists(UUID organizationId, UUID vendorId) {
         load(organizationId, vendorId);
+    }
+
+    /** The few vendor fields other features (vendor portal) need; never the entity. */
+    public record VendorBrief(UUID id, String companyName, String contactName, String email, boolean active) {
+    }
+
+    /** NO authorization: the caller authorized (staff) or verified a capability (portal link) for this organization. */
+    @Transactional(readOnly = true)
+    public Optional<VendorBrief> findBrief(UUID organizationId, UUID vendorId) {
+        return vendors.findByIdAndOrganizationId(vendorId, organizationId).map(v -> new VendorBrief(v.getId(),
+                v.getCompanyName(), v.getContactName(), v.getEmail(), v.getStatus() == VendorStatus.ACTIVE));
+    }
+
+    /** Document type ids the vendor is required to provide (active or not; callers intersect with active types). */
+    @Transactional(readOnly = true)
+    public Set<UUID> requirementTypeIds(UUID organizationId, UUID vendorId) {
+        return requirements.findByOrganizationIdAndVendorId(organizationId, vendorId).stream()
+                .map(VendorRequirement::getDocumentTypeId).collect(Collectors.toSet());
     }
 
     /**

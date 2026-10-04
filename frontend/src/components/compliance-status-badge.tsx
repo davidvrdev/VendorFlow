@@ -40,8 +40,9 @@ const STATUS_CONFIG: Record<ComplianceStatus, StatusConfig> = {
   },
 };
 
-export function ComplianceStatusBadge({ status, className }: { status: ComplianceStatus; className?: string }) {
-  const { label, Icon, className: tone } = STATUS_CONFIG[status];
+export function ComplianceStatusBadge({ status, className, label: labelOverride }: { status: ComplianceStatus; className?: string; label?: string }) {
+  const { label: defaultLabel, Icon, className: tone } = STATUS_CONFIG[status];
+  const label = labelOverride ?? defaultLabel;
   return (
     <Badge variant="outline" className={cn("gap-1 font-medium", tone, className)}>
       <Icon aria-hidden="true" />
