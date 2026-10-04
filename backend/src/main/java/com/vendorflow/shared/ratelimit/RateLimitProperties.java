@@ -24,7 +24,12 @@ public class RateLimitProperties {
             "resend-verification", 3,
             "document-upload", 30,
             "document-upload-user", 30,
-            "document-request-user", 30));
+            "document-request-user", 30,
+            "vendor-import-preview-user", 10,
+            "vendor-export-user", 10));
+    /** Per-rule window overriding {@link #window} (the CSV export is 10 per 10 minutes, not per minute). */
+    private Map<String, Duration> windows = new LinkedHashMap<>(
+            Map.of("vendor-export-user", Duration.ofMinutes(10)));
 
     public boolean isEnabled() {
         return enabled;
@@ -40,6 +45,18 @@ public class RateLimitProperties {
 
     public void setWindow(Duration window) {
         this.window = window;
+    }
+
+    public Map<String, Duration> getWindows() {
+        return windows;
+    }
+
+    public void setWindows(Map<String, Duration> windows) {
+        this.windows = windows;
+    }
+
+    public Duration windowFor(String rule) {
+        return windows.getOrDefault(rule, window);
     }
 
     public Map<String, Integer> getLimits() {

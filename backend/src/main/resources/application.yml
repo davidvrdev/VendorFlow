@@ -97,6 +97,8 @@ app:
       document-upload-user: 30
       # POST /api/v1/vendors/{id}/document-requests, per authenticated user id (DocumentRequestService)
       document-request-user: 30
+      # POST /api/v1/vendors/import/preview, per authenticated user id (VendorImportService)
+      vendor-import-preview-user: 10
   documents:
     # Max size of one uploaded document (our own check, before the multipart limits above).
     max-size: 15MB

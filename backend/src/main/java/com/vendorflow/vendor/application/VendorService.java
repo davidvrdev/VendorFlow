@@ -98,6 +98,16 @@ public class VendorService {
     public PageResponse<VendorSummary> list(String q, String status, String category, String compliance, String sort,
             int page, int size) {
         TenantContext.Tenant tenant = authorization.require(Permission.DATA_VIEW);
+        var criteria = criteria(tenant.organizationId(), q, status, category, compliance, sort);
+        return PageResponse.of(search.search(tenant.organizationId(), criteria, PageResponse.pageable(page, size)));
+    }
+
+    /**
+     * Parses and validates the list filters (400 on bad values). Shared with the CSV export so that "export what I
+     * see" can never drift from the list endpoint: both use the very same parsing, defaults and SQL.
+     */
+    VendorSearchRepository.Criteria criteria(UUID organizationId, String q, String status, String category,
+            String compliance, String sort) {
         List<FieldViolation> errors = new ArrayList<>();
         VendorStatus statusFilter = parseStatus(status, errors);
         VendorCompliance complianceFilter = parseCompliance(compliance, errors);
@@ -105,10 +115,9 @@ public class VendorService {
         if (!errors.isEmpty()) {
             throw new RequestValidationException(errors);
         }
-        ComplianceContext ctx = complianceContext.forOrganization(tenant.organizationId());
-        var criteria = new VendorSearchRepository.Criteria(blankToNull(q), statusFilter, blankToNull(category),
+        ComplianceContext ctx = complianceContext.forOrganization(organizationId);
+        return new VendorSearchRepository.Criteria(blankToNull(q), statusFilter, blankToNull(category),
                 complianceFilter, sortSpec.field(), sortSpec.ascending(), ctx.today(), ctx.windowDays());
-        return PageResponse.of(search.search(tenant.organizationId(), criteria, PageResponse.pageable(page, size)));
     }
 
     @Transactional(readOnly = true)
@@ -136,21 +145,40 @@ public class VendorService {
         if (vendors.existsByName(orgId, request.companyName())) {
             throw duplicate();
         }
+        Vendor vendor = createVendor(tenant, request, null, documentTypes.findActiveRequiredByDefault(orgId), Map.of());
+        return detail(vendor);
+    }
+
+    /**
+     * The one place a vendor is created (API and CSV import): row, default requirements and audit event in the
+     * caller transaction. {@code status} null = ACTIVE. {@code defaults} is passed in so a bulk import loads the
+     * default types once. A lost race on the name index surfaces as the usual 409 (see {@link #saveUnique}).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    Vendor createVendor(TenantContext.Tenant tenant, VendorRequest request, VendorStatus status,
+            List<DocumentTypeView> defaults, Map<String, Object> auditExtras) {
+        UUID orgId = tenant.organizationId();
         Instant now = clock.instant();
         Vendor vendor = new Vendor(orgId, tenant.userId(), now);
         vendor.setDetails(request.companyName(), request.contactName(), request.email(), request.phone(),
                 request.category(), request.notes());
+        if (status != null) {
+            vendor.setStatus(status);
+        }
         saveUnique(vendor);
 
-        List<DocumentTypeView> defaults = documentTypes.findActiveRequiredByDefault(orgId);
         requirements.saveAll(defaults.stream()
                 .map(t -> new VendorRequirement(orgId, vendor.getId(), t.id(), now)).toList());
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("companyName", vendor.getCompanyName());
         metadata.put("requirements", defaults.stream().map(DocumentTypeView::code).toList());
+        if (status == VendorStatus.INACTIVE) {
+            metadata.put("status", status.name());
+        }
+        metadata.putAll(auditExtras);
         audit.record("vendor.created", ENTITY_TYPE, vendor.getId(), metadata);
-        return detail(vendor);
+        return vendor;
     }
 
     /** Full replacement of the editable fields. A request that changes nothing writes no audit event. */
@@ -158,7 +186,17 @@ public class VendorService {
     public VendorDetail update(UUID id, VendorRequest request) {
         TenantContext.Tenant tenant = authorization.require(Permission.CONTENT_WRITE);
         Vendor vendor = load(tenant.organizationId(), id);
+        applyUpdate(vendor, request, null, Map.of());
+        return detail(vendor);
+    }
 
+    /**
+     * The one place vendor fields are changed (API update and CSV import): diff, duplicate-name check, save and a
+     * single {@code vendor.updated} audit event; nothing is written when nothing differs. {@code status} null =
+     * leave the status alone (the API changes status through deactivate/reactivate; the import may set it).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    boolean applyUpdate(Vendor vendor, VendorRequest request, VendorStatus status, Map<String, Object> auditExtras) {
         Map<String, Object> changes = new LinkedHashMap<>();
         diff(changes, "companyName", vendor.getCompanyName(), request.companyName());
         diff(changes, "contactName", vendor.getContactName(), request.contactName());
@@ -166,19 +204,28 @@ public class VendorService {
         diff(changes, "phone", vendor.getPhone(), request.phone());
         diff(changes, "category", vendor.getCategory(), request.category());
         diff(changes, "notes", vendor.getNotes(), request.notes());
+        if (status != null) {
+            diff(changes, "status", vendor.getStatus().name(), status.name());
+        }
         if (changes.isEmpty()) {
-            return detail(vendor);
+            return false;
         }
         if (changes.containsKey("companyName")
-                && vendors.existsByNameExcluding(tenant.organizationId(), request.companyName(), id)) {
+                && vendors.existsByNameExcluding(vendor.getOrganizationId(), request.companyName(), vendor.getId())) {
             throw duplicate();
         }
         vendor.setDetails(request.companyName(), request.contactName(), request.email(), request.phone(),
                 request.category(), request.notes());
+        if (status != null) {
+            vendor.setStatus(status);
+        }
         vendor.touch(clock.instant());
         saveUnique(vendor);
-        audit.record("vendor.updated", ENTITY_TYPE, id, Map.of("changes", changes));
-        return detail(vendor);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("changes", changes);
+        metadata.putAll(auditExtras);
+        audit.record("vendor.updated", ENTITY_TYPE, vendor.getId(), metadata);
+        return true;
     }
 
     @Transactional

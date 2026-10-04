@@ -20,6 +20,8 @@ app:
       document-upload: 10000
       document-upload-user: 10000
       document-request-user: 10000
+      vendor-import-preview-user: 10000
+      vendor-export-user: 10000
   reminders:
     # The scheduled job stays off: E2E triggers it explicitly via POST /api/test/reminders/run (deterministic).
     enabled: false

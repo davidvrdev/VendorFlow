@@ -1,7 +1,6 @@
 package com.vendorflow.shared.ratelimit;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -21,7 +20,7 @@ public class RateLimiter {
     public record Decision(boolean allowed, long retryAfterSeconds) {
     }
 
-    private record Window(long startMillis, int count) {
+    private record Window(long startMillis, long windowMillis, int count) {
     }
 
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
@@ -39,12 +38,12 @@ public class RateLimiter {
             return new Decision(true, 0);
         }
         long now = clock.millis();
-        long windowMillis = properties.getWindow().toMillis();
+        long windowMillis = properties.windowFor(rule).toMillis();
         Window updated = windows.compute(rule + "|" + clientIp, (key, current) -> {
             if (current == null || now - current.startMillis() >= windowMillis) {
-                return new Window(now, 1);
+                return new Window(now, windowMillis, 1);
             }
-            return new Window(current.startMillis(), current.count() + 1);
+            return new Window(current.startMillis(), windowMillis, current.count() + 1);
         });
         if (updated.count() <= limit) {
             return new Decision(true, 0);
@@ -57,8 +56,7 @@ public class RateLimiter {
     @Scheduled(fixedDelay = 60_000)
     void cleanup() {
         long now = clock.millis();
-        Duration window = properties.getWindow();
-        windows.values().removeIf(w -> now - w.startMillis() >= window.toMillis());
+        windows.values().removeIf(w -> now - w.startMillis() >= w.windowMillis());
     }
 
     /** Clears all counters. Used by tests to isolate scenarios. */

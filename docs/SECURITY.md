@@ -136,3 +136,20 @@ The application limits (15 MB file / 16 MB part / 17 MB request) apply only AFTE
 ### Defined behaviors
 - Uploads to INACTIVE vendors are allowed (keeps records complete).
 - Changing a document type's `hasExpiration` keeps existing document dates. Phase 4 compliance rules decide: types without expiration ignore dates; types with expiration and a null date become REVIEW_REQUIRED.
+
+## CSV import/export controls (implemented, Phase 7)
+- **CSV / formula injection (export)**: every text cell starting with `=`, `+`, `-`, `@`, TAB or CR is written with a leading `'` (one place: `VendorCsv.protect`). Vendor names and notes are
+  user-entered, so an exported file opened in Excel/Sheets must never execute them. The import strips that prefix again (only `'` + trigger char) so exports round-trip. The
+  `Content-Type` is `text/csv` with `nosniff`, served as an attachment with a fixed server-built file name, `Cache-Control: no-store`.
+- **Parsing limits (import)**: 1 MB file (declared size AND real length), 2,000 data rows, `.csv` extension on the sanitized name, strict UTF-8 (`CharsetDecoder` with REPORT, no replacement
+  characters), RFC 4180 parsing by Apache Commons CSV (no custom parser), header checks (required/duplicate/unknown, max 30 columns), 10 previews/min per user. Parse errors never echo file
+  content; no stack traces. Cell values go through the same Bean Validation + `@PlainText` rules as the vendor API (control and bidi/zero-width characters rejected).
+- **No ids from the client in the file**: a CSV cannot name vendor ids; matching is by company name inside the caller's organization only (`VendorRepository.findByLowerNames` takes the organization id),
+  so a file can never touch another organization's vendors. Import ids of other organizations are 404.
+- **Stored previews / import data retention**: contain vendor contact data; short-lived (1 h), the rows are **cleared (empty array, summary kept) as soon as the commit succeeds**, uncommitted previews are purged 24 h after expiry. Commit re-validates every stored row with the vendor rules (422 if any fails), locks the import row (no double apply) and row-locks the matched vendors ordered by id (no lost update against a concurrent edit; a changed outcome is a 409).
+- **Intended behaviour (L4)**: any OWNER/ADMIN of the organization may commit a colleague's preview (both hold `ARCHIVE_AND_IMPORT`; the audit event records the committing user).
+- **Hostile-file limits**: header at most 30 columns (else 400 `Invalid CSV file`); at most 20 "Unknown column" errors plus one summary; echoed column names cut to 50 characters; cells over 10,000 characters are a row error and never stored; ERROR rows are stored truncated to their column maximum, so stored size and response size stay bounded whatever the file contains.
+- **Export rate limit**: `vendor-export-user`, 10 per 10 minutes per user, applied before the query (429 + `Retry-After`). `RateLimitProperties.windows` gives a rule its own window (default for others stays 1 minute).
+- **Export scope**: filters are the list endpoint's, tenant-scoped in SQL; cap 10,000 rows; audited (`vendor.exported`: filters + count only).
+- **Residual**: the per-user preview limit is in-process like the other limits; the ingress should cap bodies on `/api/v1/vendors/import/preview` to ~1.5 MB (DEPLOYMENT.md). The app-side container
+  limit for multipart is still 16 MB (our own 1 MB check runs after the container has accepted the body).

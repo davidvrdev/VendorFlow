@@ -222,3 +222,11 @@ Creates `document` as specified above plus: `size_bytes>0`, `issue_date<=expirat
 - Indexes: `reminder_org_undigested_idx (organization_id) WHERE digested_at IS NULL`, `reminder_org_document_idx`, and `notification_org_created_idx (organization_id, created_at DESC)` for `GET /notifications`.
 - **Run tracking**: `organization.last_reminder_run_date date NULL` = the org-local date of the last completed reminder run. `ReminderService` locks the organization row (`SELECT ... FOR UPDATE`), skips if the date is already today (org time zone) or the local time is before 07:00, does its work and stores today's date in the same transaction (a crash redoes the day; concurrent runs/instances serialize on the row lock and the second sees the committed date).
 - Reminder candidates = rows of `RequirementStatusSql.REQ_CTE` (vendor requirement on an active type with a CURRENT, non-rejected document of an expiring type) of ACTIVE vendors; documents without a vendor requirement are not tracked.
+
+### Phase 7 migration (V7__vendor_import.sql)
+- `vendor_import` (stored CSV import previews): `id uuid PK`, `organization_id uuid NOT NULL -> organization`, `created_by_user_id uuid -> app_user ON DELETE SET NULL`,
+  `status text CHECK IN ('PREVIEWED','COMMITTED','EXPIRED')`, `rows jsonb NOT NULL` (array of parsed rows: rowNumber, companyName, action, changes, errors, normalized cell values,
+  matched vendor id), `summary jsonb NOT NULL` ({total, create, update, unchanged, error}), `created_at`, `expires_at` (creation + 1 h), `committed_at`.
+  `UNIQUE (organization_id, id)` (tenant-scoped lookups; ready for composite FKs). Index `vendor_import_expires_idx (expires_at)` serves the purge.
+- Commit locks the row (`SELECT ... FOR UPDATE`, `VendorImportRepository.findForUpdate`) so concurrent commits of one import serialize; `rows` is replaced by `[]` when committed.
+- Retention: rows contain vendor contact data; purge = `expires_at < now - 24 h` on every new preview and hourly (`VendorImportService.purgeExpiredPreviews`).

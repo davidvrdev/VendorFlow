@@ -66,7 +66,7 @@ public class VendorSearchRepository {
               group by vendor_id
             ),
             listing as (
-              select v.id, v.company_name, v.contact_name, v.email, v.phone, v.category, v.status,
+              select v.id, v.company_name, v.contact_name, v.email, v.phone, v.category, v.status, v.notes,
                      v.created_at, v.updated_at,
                      coalesce(a.total, 0) as total, coalesce(a.missing, 0) as missing,
                      coalesce(a.expired, 0) as expired, coalesce(a.expiring, 0) as expiring,
@@ -85,7 +85,25 @@ public class VendorSearchRepository {
     @PersistenceContext
     private EntityManager em;
 
+    /** A list row plus the columns the CSV export needs that the list API does not show (notes). */
+    public record ExportRow(VendorSummary summary, String notes) {
+    }
+
     public Page<VendorSummary> search(UUID organizationId, Criteria criteria, Pageable pageable) {
+        Page<ExportRow> rows = run(organizationId, criteria, pageable, false);
+        return new PageImpl<>(rows.getContent().stream().map(ExportRow::summary).toList(), pageable,
+                rows.getTotalElements());
+    }
+
+    /**
+     * Same SQL, filters and ordering as {@link #search}, for the CSV export: ONE statement (no count query) that
+     * returns at most {@code limit} rows plus one more, so the caller can tell "too many" without a second query.
+     */
+    public List<ExportRow> export(UUID organizationId, Criteria criteria, int limit) {
+        return run(organizationId, criteria, Pageable.ofSize(limit + 1), true).getContent();
+    }
+
+    private Page<ExportRow> run(UUID organizationId, Criteria criteria, Pageable pageable, boolean export) {
         // Filters on vendor columns go inside the listing CTE; the compliance filter needs the computed column, so it
         // is applied on the outer select (page and count share the same text, hence the same result set).
         StringBuilder inner = new StringBuilder();
@@ -105,13 +123,15 @@ public class VendorSearchRepository {
 
         String base = CTES + inner;
         String pageSql = base + "select id, company_name, contact_name, email, phone, category, status, created_at,"
-                + " updated_at, total, missing, expired, expiring, review_required, ok, next_exp, compliance"
-                + " from listing" + outerWhere + orderBy(criteria) + " limit :limit offset :offset";
+                + " updated_at, total, missing, expired, expiring, review_required, ok, next_exp, compliance,"
+                // notes (up to 5,000 chars per vendor) only travel for the export, never for the list API
+                + (export ? " notes" : " null as notes") + " from listing" + outerWhere + orderBy(criteria) + " limit :limit offset :offset";
         String countSql = base + "select count(*) from listing" + outerWhere;
 
         Query page = em.createNativeQuery(pageSql);
-        Query count = em.createNativeQuery(countSql);
-        for (Query q : List.of(page, count)) {
+        // The export needs no total: it asks for limit + 1 rows and checks the size.
+        Query count = export ? null : em.createNativeQuery(countSql);
+        for (Query q : export ? List.of(page) : List.of(page, count)) {
             q.setParameter("organizationId", organizationId);
             q.setParameter("today", criteria.today());
             q.setParameter("windowDays", criteria.windowDays());
@@ -131,11 +151,12 @@ public class VendorSearchRepository {
         page.setParameter("limit", pageable.getPageSize());
         page.setParameter("offset", pageable.getOffset());
 
-        List<VendorSummary> items = new ArrayList<>();
+        List<ExportRow> items = new ArrayList<>();
         for (Object row : page.getResultList()) {
-            items.add(toSummary((Object[]) row, criteria.today()));
+            Object[] r = (Object[]) row;
+            items.add(new ExportRow(toSummary(r, criteria.today()), (String) r[17]));
         }
-        long total = ((Number) count.getSingleResult()).longValue();
+        long total = export ? items.size() : ((Number) count.getSingleResult()).longValue();
         return new PageImpl<>(items, pageable, total);
     }
 

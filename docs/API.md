@@ -582,6 +582,57 @@ re-check every row against the CURRENT database (a vendor created/renamed since 
 `importId`) plus one `vendor.imported` summary event. Rate limit: preview 10/min per user.
 Expired previews are deleted by a periodic cleanup (keep it simple: during preview creation or a scheduled job).
 
+**Implementation notes (Phase 7 backend) — IMPLEMENTED; differences/additions vs the contract above:**
+- **Phase 7 security-fix additions**: export is limited to **10 per 10 minutes per user** (rule `vendor-export-user`, counted before the query): 429 `rate-limited` + `Retry-After`.  A cell longer than 10,000 characters makes its row an ERROR (`Value too long`; the value is dropped, never stored or echoed); ERROR rows keep each value truncated to  its column maximum. Unknown-column errors are capped at 20 on row 1 plus one summary error `{field:"header", message:"and N more unknown columns"}`; echoed column  names are cut to 50 characters. Commit re-validates every stored row with the vendor rules (any violation: 422 `Import has errors`, nothing applied), row-locks the  matched vendors before re-resolving, and after success clears the stored rows (keeps the summary).
+- **Permissions**: the contract's names do not exist; real ones are `DATA_VIEW` (export: OWNER/ADMIN/MEMBER/VIEWER) and `ARCHIVE_AND_IMPORT`
+  (preview, commit and **template**: OWNER/ADMIN; MEMBER/VIEWER get 403). The template needs the import permission because it is only useful there.
+- **Export**: `GET /vendors/export.csv?status=&compliance=&q=&category=` uses the list endpoint's own parsing/defaults/SQL (bad filter values = 400
+  `errors[{field}]` like the list). Sorted by company name, no `sort`/paging params. Columns, in order: `company_name, contact_name, email, phone, category,
+  notes, status, compliance_status, missing, expired, expiring, review_required, next_expiration` (status = `ACTIVE|INACTIVE`, compliance_status =
+  `COMPLIANT|ATTENTION|NON_COMPLIANT`, counts are integers, next_expiration = ISO date or empty). Over 10,000 rows: 422 `title: "Too many vendors to export"`.
+  Response `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="vendors-YYYY-MM-DD.csv"` (date in the ORGANIZATION time zone),
+  `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`. Built in memory (a few MB at most; the DB connection is released before the download starts and
+  errors can still be a normal problem response). Audit `vendor.exported` (entity `vendor`, no id) metadata `{ rowCount, status, compliance, category, q }`.
+- **Template**: `GET /vendors/import/template.csv` -> BOM + CRLF, header `company_name,contact_name,email,phone,category,notes,status` and one example row;
+  `Content-Disposition: attachment; filename="vendor-import-template.csv"`.
+- **Formula-injection round trip (addition)**: export prefixes `'` to cells starting with `= + - @ TAB CR`; **import removes a leading `'` only when it is
+  followed by one of those characters**, so `+1 (555) 010-0100` survives export -> edit -> import unchanged. Any other leading apostrophe is real data.
+- **Preview response**: exactly the contract's `ImportPreview`. `expiresAt` = creation + 1 h. `rows` contains every non-empty data row (blank lines / rows of only commas
+  are skipped but still numbered, so `rowNumber` matches the spreadsheet). `errors[].field` is the column name; two pseudo-fields exist: `"row"` (data in a cell with no
+  header name or beyond the header width) and an unknown header name itself (see below).
+- **File-level failures (no preview is stored)**, all RFC 9457 problems with `requestId`:
+  | Case | Status | Notes |
+  |---|---|---|
+  | no `file` part / empty file | 400 `errors[{field:"file"}]` | |
+  | extension not `.csv` (case-insensitive; the sanitized name is used) | 415 `title: "Unsupported file type"` | |
+  | > 1 MB (declared or real length) | 413 `title: "File too large"` | |
+  | not valid UTF-8 (strict decoder, never lenient) | 400 `title: "Invalid CSV file"`, detail says the file is not valid UTF-8 and how to save as CSV UTF-8 | BOM optional |
+  | unparseable CSV (e.g. unterminated quote), empty file, header only, no data rows | 400 `title: "Invalid CSV file"` | detail never echoes file content |
+  | header with more than 30 columns | 400 `title: "Invalid CSV file"`, detail names the limit | checked before any per-column work (a 1 MB header of unique names is cheap to reject) |
+  | header has no `company_name`, or a duplicate column (case-insensitive) | 400 `title: "Validation failed"` with `errors[{field: <column>, message}]` | **deviation/choice**: the contract only specified unknown columns |
+  | > 2,000 data rows | 422 `title: "Too many rows"` | exactly 2,000 is accepted |
+  | rate limit: 10 previews/min per user (rule `vendor-import-preview-user`) | 429 + `Retry-After` | counted after authz, before any file work |
+- **Unknown columns** (neither import nor read-only): reported as one error per unknown column on the FIRST row of `rows` (`errors[{field: <lower-cased header name>, message: "Unknown column"}]`),
+  which makes that row an ERROR and blocks commit; the other rows keep their own action. Header names are trimmed and case-insensitive; order is free; the six read-only
+  export columns are accepted and ignored.
+- **Row rules** are the vendor API's: the CSV cells are put through `VendorRequest` (the same record, strip/blank-to-null normalization and Bean Validation annotations) so lengths,
+  e-mail, phone, `@PlainText` and `notes` line-break rules cannot drift. Notes line breaks are normalized to LF. `status` (case-insensitive) must be `ACTIVE|INACTIVE`.
+  Messages are the Bean Validation messages (e.g. `must not be blank`, `size must be between 0 and 120`) except status (`must be ACTIVE or INACTIVE`) and duplicates
+  (`Appears more than once in this file (rows 2, 5)`, on every duplicate row).
+- **Actions**: matching is by trimmed, case-insensitive `company_name` against the organization's vendors (ALL statuses). A difference in letter case of the name only IS an UPDATE
+  (`changes: ["company_name"]`). `changes` lists column names (`company_name, contact_name, email, phone, category, notes, status`, in that order). Line-break style in notes is not a change.
+- **Commit**: order of checks: 403, 404 (foreign or unknown id), 409 `title: "Import already committed"` (checked before expiry), 410 `title: "Import expired"`,
+  422 `title: "Import has errors"`, 409 `title: "Data changed since preview"` (every row is re-resolved against the current data under the import-row lock; action, matched vendor
+  or the list of changed columns differing from the preview = nothing applied; a vendor created by someone else between the re-check and the insert gives the same 409).
+  A malformed id (not a UUID) is 400. Any OWNER/ADMIN of the organization may commit a preview made by another one. Creates use the same code as `POST /vendors`
+  (default requirements, audit `vendor.created`); updates the same code as `PUT /vendors/{id}` plus `status` in the same `vendor.updated` event (`changes.status` before/after, so the
+  vendor history shows it). Audit metadata of both gets `source: "csv_import"`, `importId`; the summary event is `vendor.imported` (entity `vendor_import`, id = import id) with
+  `{ total, created, updated, unchanged }`. UNCHANGED rows write nothing.
+- **Retention**: previews hold vendor contact data. Rows are cleared when committed; expired previews are deleted 24 h after expiry (so "expired" can answer 410 for a day) when any new
+  preview is created and by an hourly scheduled purge. The `EXPIRED` status value exists in the CHECK but is not written (expiry is derived from `expires_at`).
+- **Frontend-visible differences from the contract text**: (1) header problems (missing `company_name`, duplicate column) are a 400 problem with `errors[]`, not a preview;
+  (2) permission names (above); (3) template is import-permission only; (4) the `'` un-prefixing on import. Everything else matches the contract types.
+
 ### Billing (Phase 8)
 - `GET  /billing/subscription`
 - `POST /billing/checkout-session` → `{ url }`

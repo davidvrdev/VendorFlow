@@ -34,6 +34,21 @@ public interface VendorRepository extends JpaRepository<Vendor, UUID> {
     boolean existsByNameExcluding(@Param("organizationId") UUID organizationId,
             @Param("companyName") String companyName, @Param("excludeId") UUID excludeId);
 
+    /**
+     * Same match, row-locked (CSV commit). Ordered by id so two commits always lock in the same order and cannot
+     * deadlock; a concurrent vendor edit waits for the commit, or the commit sees the edit.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from Vendor v where v.organizationId = :organizationId and lower(v.companyName) in :lowerNames"
+            + " order by v.id")
+    List<Vendor> findByLowerNamesForUpdate(@Param("organizationId") UUID organizationId,
+            @Param("lowerNames") java.util.Collection<String> lowerNames);
+
+    /** Existing vendors whose lower-cased name is in {@code lowerNames} (CSV import matching; callers pass at most a few thousand). */
+    @Query("select v from Vendor v where v.organizationId = :organizationId and lower(v.companyName) in :lowerNames")
+    List<Vendor> findByLowerNames(@Param("organizationId") UUID organizationId,
+            @Param("lowerNames") java.util.Collection<String> lowerNames);
+
     @Query("""
             select distinct v.category from Vendor v
             where v.organizationId = :organizationId and v.category is not null and v.category <> ''
